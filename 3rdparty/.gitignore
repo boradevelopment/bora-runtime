@@ -1,0 +1,3 @@
+# Ignoring 3rd party libs
+wasm-micro-runtime
+SPIRV-Cross
