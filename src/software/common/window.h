@@ -18,11 +18,28 @@
 #define BORA_WINDOW_H
 
 
+#pragma once
+#include <string>
 
-class window {
-
+struct WindowProperties {
+    sString test;
 };
 
+
+class Window {
+public:
+    Window(const std::string& title, int width, int height);
+    ~Window();
+
+    void poll();         // Run one iteration of the message loop
+    bool shouldClose();  // Check if the window should close
+
+    void* getNativeHandle(); // Optional: HWND, NSWindow*, etc.
+
+private:
+    struct Impl; // Platform-specific
+    Impl* impl;
+};
 
 
 #endif //BORA_WINDOW_H

@@ -3,3 +3,5 @@
 //
 
 #include "boraMemorySymbols.h"
+
+int BoraMemorySymbols::tSize = 0;

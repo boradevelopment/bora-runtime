@@ -5,10 +5,14 @@
 
 #include <stdlib.h>
 #include <string.h>
-
+#include "TAZA.h"
 #include "bh_platform.h"
 #include "bh_read_file.h"
 #include "wasm_export.h"
+#include "tools/AppParam.h"
+#if __linux__
+#include <dlfcn.h>
+#endif
 
 #if WASM_ENABLE_LIBC_WASI != 0
 #include "libc_wasi.c"
@@ -19,12 +23,15 @@ static char **app_argv;
 
 #define MODULE_PATH ("--module-path=")
 
+using InitializeSymbolsFunc = int(*)(int, char * b[]);
+
 #include <cstring>
 #include <string>
 #include <iostream>
 #include <vector>
 #include "host/hostSymbols.h"
 
+#if WIN32
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
     switch (uMsg) {
         case WM_DESTROY:
@@ -100,6 +107,13 @@ static void create_window(wasm_exec_env_t exec_env, int32_t title_ptr, int32_t w
 
     run_message_loop();
 }
+
+#else
+
+static void create_window(wasm_exec_env_t exec_env, int32_t title_ptr, int32_t width, int32_t height) {
+   return;
+}
+#endif
 
 static NativeSymbol native_symbolsWin[] = {
         {
@@ -251,7 +265,11 @@ split_string(char *str, int *count)
 
     /* split string and append tokens to 'res' */
     do {
+#if WIN32
         p = strtok_s(str, " ", &next_token);
+#elif __linux__
+        p = strtok_r(str, " ", &next_token);
+#endif
         str = NULL;
         res1 = res;
         res = (char **)realloc(res1, sizeof(char *) * (uint32)(idx + 1));
@@ -319,6 +337,8 @@ app_instance_repl(wasm_module_inst_t module_inst)
     return NULL;
 }
 
+
+#if WIN32
 #if WASM_ENABLE_GLOBAL_HEAP_POOL != 0
 static char global_heap_buf[WASM_GLOBAL_HEAP_SIZE] = { 0 };
 #else
@@ -352,6 +372,50 @@ free_func(
     free(ptr);
 }
 #endif /* end of WASM_ENABLE_GLOBAL_HEAP_POOL */
+#elif __linux__
+#if WASM_ENABLE_GLOBAL_HEAP_POOL != 0
+static char global_heap_buf[WASM_GLOBAL_HEAP_SIZE] = { 0 };
+#else
+static void *
+malloc_func(
+#if WASM_MEM_ALLOC_WITH_USAGE != 0
+        mem_alloc_usage_t usage,
+#endif
+#if WASM_MEM_ALLOC_WITH_USER_DATA != 0
+        void *user_data,
+#endif
+        unsigned int size)
+{
+    return malloc(size);
+}
+
+static void *
+realloc_func(
+#if WASM_MEM_ALLOC_WITH_USAGE != 0
+        mem_alloc_usage_t usage, bool full_size_mmaped,
+#endif
+#if WASM_MEM_ALLOC_WITH_USER_DATA != 0
+        void *user_data,
+#endif
+        void *ptr, unsigned int size)
+{
+    return realloc(ptr, size);
+}
+
+static void
+free_func(
+#if WASM_MEM_ALLOC_WITH_USAGE != 0
+        mem_alloc_usage_t usage,
+#endif
+#if WASM_MEM_ALLOC_WITH_USER_DATA != 0
+        void *user_data,
+#endif
+        void *ptr)
+{
+    free(ptr);
+}
+#endif /* end of WASM_ENABLE_GLOBAL_HEAP_POOL */
+#endif
 
 #if WASM_ENABLE_MULTI_MODULE != 0
 static char *
@@ -430,9 +494,101 @@ size_t get_default_stack_size() {
 #endif
 }
 
+
+bool IsRunningAsDLL() {
+#if WIN32
+    // Get handle of current module (DLL or EXE)
+    HMODULE hModule = nullptr;
+    // If compiled inside DLL, GetModuleHandleEx can be used with address inside module
+    if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCTSTR)&IsRunningAsDLL, &hModule)) {
+        // Get the module file name
+        TCHAR path[MAX_PATH];
+        if (GetModuleFileName(hModule, path, MAX_PATH)) {
+            // Check extension for .dll or .exe (simple)
+            std::string filename(path);
+            size_t pos = filename.rfind('.');
+            if (pos != std::string::npos) {
+                std::string ext = filename.substr(pos);
+                if (strcmp(ext.c_str(), ".dll") == 0) {
+                    return true;  // Running inside DLL
+                }
+            }
+        }
+    }
+    return false;  // Probably EXE
+#elif __linux__
+    Dl_info info = {};
+    // Take the address of some function or symbol in your code
+    if (dladdr((void*)IsRunningAsDLL, &info) != 0 && info.dli_fname) {
+        std::string filename(info.dli_fname);
+        // Check extension for .so (shared object)
+        size_t pos = filename.rfind('.');
+        if (pos != std::string::npos) {
+            std::string ext = filename.substr(pos);
+            if (ext == ".so" || ext.find(".so.") != std::string::npos) {
+                return true;  // Running inside shared library
+            }
+        }
+    }
+    return false; // Probably executable
+#endif
+}
+
 int
 main(int argc, char *argv[])
 {
+
+    AppParam::registerParam("debug", {"-db"});
+    AppParam::registerParam("compatability", {"-comp", "-co"});
+
+    AppParam::initialize(argc, argv);
+
+
+    if(!IsRunningAsDLL() && AppParam::has("compatability")) {
+        auto vString = AppParam::getValue<std::string>("compatability");
+
+#if WIN32
+        HMODULE hCompatDll = LoadLibrary(TEXT(vString.c_str()));  // adjust name as needed
+        if (!hCompatDll) {
+            std::cerr << "Failed to load Compatability DLL " << GetLastError() << "\n";
+            std::cerr << "I will use this executables compatability system\n";
+        } else {
+
+            // Get the exported function pointers
+            auto initializeSymbols = (InitializeSymbolsFunc) GetProcAddress(hCompatDll, "main");
+
+            if(!initializeSymbols){
+                std::cerr << "Not a valid compatability DLL for BORA\n";
+            } else {
+                // Call the functions
+                return initializeSymbols(argc, argv);
+            }
+        }
+#elif __linux__
+        // Open the shared library (.so)
+        void* hCompatDll = dlopen(vString.c_str(), RTLD_LAZY);
+        if (!hCompatDll) {
+            std::cerr << "Failed to load Compatibility SO: " << dlerror() << "\n";
+            std::cerr << "I will use this executable's compatibility system\n";
+        } else {
+            // Clear any existing errors
+            dlerror();
+
+            // Get the symbol pointer to "main"
+            auto initializeSymbols = (InitializeSymbolsFunc) dlsym(hCompatDll, "main");
+            const char* dlsym_error = dlerror();
+            if (dlsym_error) {
+                std::cerr << "Not a valid compatibility SO for BORA: " << dlsym_error << "\n";
+            } else {
+                // Call the function
+                return initializeSymbols(argc, argv);
+            }
+
+            // Close the shared library when done
+            dlclose(hCompatDll);
+        }
+#endif
+    }
 
 
     int32 ret = -1;
@@ -440,9 +596,9 @@ main(int argc, char *argv[])
     const char *func_name = NULL;
     uint8 *wasm_file_buf = NULL;
     uint32 wasm_file_size;
-    uint32 stack_size = get_default_heap_size();
+    uint32 stack_size = get_default_stack_size();
 #if WASM_ENABLE_LIBC_WASI != 0
-    uint32 heap_size = get_default_stack_size();
+    uint32 heap_size = get_default_heap_size();
 #else
     uint32 heap_size = 16 * 1024;
 #endif
@@ -579,19 +735,19 @@ main(int argc, char *argv[])
             wasm_runtime_set_max_thread_num(atoi(argv[0] + 14));
         }
 #endif
-#if WASM_ENABLE_DEBUG_INTERP != 0
-            else if (!strncmp(argv[0], "-g=", 3)) {
-            char *port_str = strchr(argv[0] + 3, ':');
-            char *port_end;
-            if (port_str == NULL)
-                return print_help();
-            *port_str = '\0';
-            instance_port = strtoul(port_str + 1, &port_end, 10);
-            if (port_str[1] == '\0' || *port_end != '\0')
-                return print_help();
-            ip_addr = argv[0] + 3;
-        }
-#endif
+//#if WASM_ENABLE_DEBUG_INTERP != 0
+//            else if (!strncmp(argv[0], "-g=", 3)) {
+//            char *port_str = strchr(argv[0] + 3, ':');
+//            char *port_end;
+//            if (port_str == NULL)
+//                return print_help();
+//            *port_str = '\0';
+//            instance_port = strtoul(port_str + 1, &port_end, 10);
+//            if (port_str[1] == '\0' || *port_end != '\0')
+//                return print_help();
+//            ip_addr = argv[0] + 3;
+//        }
+//#endif
         else if (!strcmp(argv[0], "--version")) {
             uint32 major, minor, patch;
             wasm_runtime_get_version(&major, &minor, &patch);
@@ -626,7 +782,13 @@ main(int argc, char *argv[])
 
     memset(&init_args, 0, sizeof(RuntimeInitArgs));
 
+
     init_args.running_mode = running_mode;
+    if(AppParam::has("debug")) {
+        strncpy(init_args.ip_addr, "0.0.0.0", sizeof(init_args.ip_addr) - 1);
+        init_args.ip_addr[sizeof(init_args.ip_addr) - 1] = '\0';  // Ensure null termination
+        init_args.instance_port = 1234;
+    }
 #if WASM_ENABLE_GLOBAL_HEAP_POOL != 0
     init_args.mem_alloc_type = Alloc_With_Pool;
     init_args.mem_alloc_option.pool.heap_buf = global_heap_buf;
@@ -637,9 +799,9 @@ main(int argc, char *argv[])
     /* Set user data for the allocator is needed */
     /* init_args.mem_alloc_option.allocator.user_data = user_data; */
 #endif
-    init_args.mem_alloc_option.allocator.malloc_func = malloc_func;
-    init_args.mem_alloc_option.allocator.realloc_func = realloc_func;
-    init_args.mem_alloc_option.allocator.free_func = free_func;
+    init_args.mem_alloc_option.allocator.malloc_func = (void*)(uintptr_t)&malloc_func;
+    init_args.mem_alloc_option.allocator.realloc_func = (void*)(uintptr_t)&realloc_func;
+    init_args.mem_alloc_option.allocator.free_func = (void*)(uintptr_t)&free_func;
 #endif
 
 #if WASM_ENABLE_GC != 0
@@ -651,13 +813,13 @@ main(int argc, char *argv[])
     init_args.llvm_jit_opt_level = llvm_jit_opt_level;
 #endif
 
-#if WASM_ENABLE_DEBUG_INTERP != 0
-    init_args.instance_port = instance_port;
-    if (ip_addr)
-        /* ensure that init_args.ip_addr is null terminated */
-        strncpy_s(init_args.ip_addr, sizeof(init_args.ip_addr) - 1, ip_addr,
-                  strlen(ip_addr));
-#endif
+//#if WASM_ENABLE_DEBUG_INTERP != 0
+//    init_args.instance_port = instance_port;
+//    if (ip_addr)
+//        /* ensure that init_args.ip_addr is null terminated */
+//        strncpy_s(init_args.ip_addr, sizeof(init_args.ip_addr) - 1, ip_addr,
+//                  strlen(ip_addr));
+//#endif
 
     /* initialize runtime environment */
     if (!wasm_runtime_full_init(&init_args)) {
@@ -674,10 +836,14 @@ main(int argc, char *argv[])
 //    wasm_runtime_register_natives("bora::input", native_symbols,
 //                                  sizeof(native_symbols) / sizeof(NativeSymbol));
 
+
+
+
     auto* test = new hostSymbols();
     test->initalizeSymbols();
 
     test->registerSymbol();
+
 
     wasm_runtime_register_natives("bora::window", native_symbolsWin,
                                   sizeof(native_symbolsWin) / sizeof(NativeSymbol));
@@ -687,9 +853,55 @@ main(int argc, char *argv[])
 #endif
 
     /* load WASM byte buffer from WASM bin file */
-    if (!(wasm_file_buf =
-                  (uint8 *)bh_read_file_to_buffer(wasm_file, &wasm_file_size)))
-        goto fail1;
+//    if (!(wasm_file_buf =
+//                  (uint8 *)bh_read_file_to_buffer(wasm_file, &wasm_file_size))){
+//        wasm_runtime_destroy();
+//    }
+
+V2Archive boraApp;
+boraApp.output = wasm_file;
+
+int resArchive = boraApp.getArchive();
+if(resArchive != 0){
+    wasm_runtime_destroy();
+    printf("This is not a BORA application\n");
+    return 1;
+}
+
+if(std::get<std::string>(boraApp.header.customVariables["id"]) != "BORA"){
+    printf("This is not a BORA application\n");
+    return 1;
+}
+
+auto entryFile = std::get<std::string>(boraApp.header.customVariables["entry"]);
+if(entryFile.empty()){
+    wasm_runtime_destroy();
+    printf("This is not a BORA application as it does not have a entry point.\n");
+    return 1;
+}
+
+
+auto entryV2File = boraApp.header.files.find(entryFile);
+if(entryV2File == boraApp.header.files.end()){
+    wasm_runtime_destroy();
+    printf("This is not a BORA application as it has an invalid entry point.\n");
+    return 1;
+}
+
+std::ifstream bla(wasm_file, std::ios::in | std::ios::binary);
+
+auto vData = boraApp.header.getV2File(bla,entryV2File->second, boraApp.iv, boraApp.key);
+if(vData.empty()){
+        wasm_runtime_destroy();
+        printf("This is not a BORA application as it's corrupted\n");
+        return 1;
+}
+
+wasm_file_buf = vData.data();
+wasm_file_size = vData.size();
+
+
+printf("I got the goods\n");
 
 #if WASM_ENABLE_AOT != 0
     if (wasm_runtime_is_xip_file(wasm_file_buf, wasm_file_size)) {
@@ -701,7 +913,7 @@ main(int argc, char *argv[])
                                                               map_flags, os_get_invalid_handle())))) {
             printf("mmap memory failed\n");
             wasm_runtime_free(wasm_file_buf);
-            goto fail1;
+            wasm_runtime_destroy();
         }
 
         bh_memcpy_s(wasm_file_mapped, wasm_file_size, wasm_file_buf,
@@ -721,7 +933,10 @@ main(int argc, char *argv[])
     if (!(wasm_module = wasm_runtime_load(wasm_file_buf, wasm_file_size,
                                           error_buf, sizeof(error_buf)))) {
         printf("%s\n", error_buf);
-        goto fail2;
+        if (!is_xip_file)
+            wasm_runtime_free(wasm_file_buf);
+        else
+            os_munmap(wasm_file_buf, wasm_file_size);
     }
 
 #if WASM_ENABLE_LIBC_WASI != 0
@@ -730,30 +945,46 @@ main(int argc, char *argv[])
 
     /* instantiate the module */
     if (!(wasm_module_inst =
-                  wasm_runtime_instantiate(wasm_module, stack_size, heap_size,
+                  wasm_runtime_instantiate(wasm_module, stack_size, 1,
                                            error_buf, sizeof(error_buf)))) {
         printf("%s\n", error_buf);
-        goto fail3;
+        wasm_runtime_unload(wasm_module);
+    }
+
+
+    wasm_function_inst_t func = wasm_runtime_lookup_function(wasm_module_inst, "get_bora_sdk_version");
+    if (!func) {
+        printf("Unable to get SDK version function! This is not a BORA Universal Assembly");
+        return 1;
+    }
+
+    auto exec_env = wasm_runtime_create_exec_env(wasm_module_inst, stack_size);
+
+    {
+        uint32_t result_ptr[2]; // I guess your return value, plus any other arguments and a extra number for stack
+        result_ptr[0] = 0;
+
+        if (!wasm_runtime_call_wasm(exec_env, func, 1, result_ptr)) {
+            printf("Call failed: %s\n", wasm_runtime_get_exception(wasm_module_inst));
+            return 1;
+        }
+        const char *result_str = (const char *) wasm_runtime_addr_app_to_native(wasm_module_inst, result_ptr[0]);
+        if (!result_str) {
+            printf("Failed to translate address\n");
+            return 1;
+        }
+
+
+        printf("Running BORA SDK Version: %s\n", result_str);
+    }
+
+    if(AppParam::has("debug")) {
+        uint32_t debug_port = wasm_runtime_start_debug_instance(exec_env);
+        printf("Debugging at %d\n", debug_port);
     }
 
 
 
-#if WASM_ENABLE_DEBUG_INTERP != 0
-    if (ip_addr != NULL) {
-        wasm_exec_env_t exec_env =
-            wasm_runtime_get_exec_env_singleton(wasm_module_inst);
-        uint32_t debug_port;
-        if (exec_env == NULL) {
-            printf("%s\n", wasm_runtime_get_exception(wasm_module_inst));
-            goto fail4;
-        }
-        debug_port = wasm_runtime_start_debug_instance(exec_env);
-        if (debug_port == 0) {
-            printf("Failed to start debug instance\n");
-            goto fail4;
-        }
-    }
-#endif
 
     ret = 0;
     const char *exception = NULL;
@@ -787,26 +1018,10 @@ main(int argc, char *argv[])
         printf("%s\n", exception);
     }
 
-#if WASM_ENABLE_DEBUG_INTERP != 0
-    fail4:
-#endif
+
     /* destroy the module instance */
     wasm_runtime_deinstantiate(wasm_module_inst);
 
-    fail3:
-    /* unload the module */
-    wasm_runtime_unload(wasm_module);
-
-    fail2:
-    /* free the file buffer */
-    if (!is_xip_file)
-        wasm_runtime_free(wasm_file_buf);
-    else
-        os_munmap(wasm_file_buf, wasm_file_size);
-
-    fail1:
-    /* destroy runtime environment */
-    wasm_runtime_destroy();
 
     return ret;
 }

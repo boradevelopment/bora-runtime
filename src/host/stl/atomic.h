@@ -19,6 +19,7 @@
 
 #include <mutex>
 #include "hostSymbolTemplate.hpp"
+#include <atomic>
 
 class boraAtomicSymbols : public HostSymbolTemplate {
 public:
@@ -42,10 +43,10 @@ public:
 
 
     std::vector<NativeSymbol> symbols = {
-            { "create", (void*)atomic_create, "(l)l", nullptr },
-            { "load", (void*)atomic_load, "(l)l", nullptr },
-            { "store", (void*)atomic_store, "(ll)", nullptr },
-            { "compare_exchange", (void*)atomic_compare_exchange, "(lll)i", nullptr },
+            { "create", (void*)atomic_create, "(I)I", nullptr },
+            { "load", (void*)atomic_load, "(I)I", nullptr },
+            { "store", (void*)atomic_store, "(II)", nullptr },
+            { "compare_exchange", (void*)atomic_compare_exchange, "(III)i", nullptr },
     };
 
     const std::vector<NativeSymbol>& get_symbols() const override {

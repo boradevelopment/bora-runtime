@@ -1,5 +1,6 @@
 #include "boraInputSymbols.h"
 #include <iostream>
+#include <cstring>
 
 int32_t BoraInputSymbols::host_cin(wasm_exec_env_t exec_env, int32_t app_ptr, int32_t len) {
     wasm_module_inst_t module_inst = wasm_runtime_get_module_inst(exec_env);

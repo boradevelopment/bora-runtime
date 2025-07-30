@@ -22,11 +22,21 @@ public:
     }
 
     // Struct passed from WASM
+        enum class MessageBoxType : int64_t {
+            NONE = 0,
+            INFORMATION = 1,
+            WARNING = 2,
+            PROBLEM = 3
+        };
+
+
     struct messageBoxConfig {
-        int32_t title_ptr;
-        int32_t message_ptr;
-        // Extend this with buttons, flags, etc.
+        int64_t title_ptr;        // Pointer to title string
+        int64_t message_ptr;      // Pointer to message string
+
+        MessageBoxType type;      // Icon/severity style
     };
+
 
     static int32_t print(wasm_exec_env_t exec_env, int32_t app_ptr) {
         const char* str = reinterpret_cast<const char*>(
@@ -51,33 +61,51 @@ public:
         void* native_data = wasm_runtime_addr_app_to_native(inst, app_ptr);
         if (!native_data) return -2;
 
+        // Copy struct from WASM memory to native struct
         messageBoxConfig config;
         std::memcpy(&config, native_data, sizeof(config));
 
+        // Resolve title and message strings
         const char* title = reinterpret_cast<const char*>(
-                wasm_runtime_addr_app_to_native(inst, config.title_ptr)
+                wasm_runtime_addr_app_to_native(inst, (uint32_t)config.title_ptr)
         );
         const char* msg = reinterpret_cast<const char*>(
-                wasm_runtime_addr_app_to_native(inst, config.message_ptr)
+                wasm_runtime_addr_app_to_native(inst, (uint32_t)config.message_ptr)
         );
 
-        std::string title_str(title);
-        std::string message_str(msg);
+        std::string title_str = title ? title : "(null)";
+        std::string message_str = msg ? msg : "(null)";
 
-        std::cout << "[MessageBox]\nTitle: " << title_str << "\nMessage: " << message_str << std::endl;
+        std::cout << "[MessageBox]\nTitle: " << title_str
+                  << "\nMessage: " << message_str
+                  << "\nType: " << static_cast<int>(config.type)
+                  << std::endl;
 
 
-        MessageBoxA(NULL, title_str.c_str(), message_str.c_str(), MB_ICONERROR);
+#if WIN32
+        // Show native Windows message box (example: ERROR icon, OK only)
+        UINT iconType = MB_OK;
+        switch (config.type) {
+            case MessageBoxType::INFORMATION: iconType = MB_ICONINFORMATION | MB_OK; break;
+            case MessageBoxType::WARNING:     iconType = MB_ICONWARNING | MB_OK; break;
+            case MessageBoxType::PROBLEM:     iconType = MB_ICONERROR | MB_OK; break;
+            default:                          iconType = MB_OK; break;
+        }
 
+        MessageBoxA(NULL, message_str.c_str(), title_str.c_str(), iconType);
+#else
+        printf("NOT SUPPORTED\n");
+#endif
 
         return 1;
     }
 
+
 private:
     std::vector<NativeSymbol> symbols = {
-            { "cout",    (void*)print,       "(i)i", nullptr },
-            { "cerr",   (void*)printError,  "(i)i", nullptr },
-            { "msgbox", (void*)messageBox,  "(i)i", nullptr },
+            { "cout",    (void*)print,       "(I)i", nullptr },
+            { "cerr",   (void*)printError,  "(I)i", nullptr },
+            { "msgbox", (void*)messageBox,  "(I)i", nullptr },
     };
 
 public:

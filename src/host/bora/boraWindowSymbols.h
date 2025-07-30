@@ -18,11 +18,9 @@
 #define BORA_BORAWINDOWSYMBOLS_H
 
 
-
 class boraWindowSymbols {
 
 };
-
 
 
 #endif //BORA_BORAWINDOWSYMBOLS_H

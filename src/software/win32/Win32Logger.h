@@ -1,4 +1,7 @@
 #pragma once
+
+#if WIN32
+
 #include <string>
 #include <iostream>
 #include <windows.h>
@@ -41,7 +44,7 @@ enum ConsoleColor {
 
 
 
-    class OPLogger {
+    class Win32Logger {
     public:
 
         // Basic log functions (<< support)
@@ -71,7 +74,7 @@ enum ConsoleColor {
         }
 
     public:
-        static OPLogger get();
+        static Win32Logger get();
 
 
         /// <summary>
@@ -130,4 +133,4 @@ enum ConsoleColor {
             std::ostringstream buffer_;
         };
     };
-
+#endif
