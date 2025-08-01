@@ -14,7 +14,7 @@ jobs:
       - name: Create Bora Structure
         run: |
           mkdir -p bora/runtime
-          cp * .[^.]* bora/runtime/ || true
+          cp -r ./* bora/runtime/
           cd bora
           git clone https://github.com/boradevelopment/bora-global.git global
 
@@ -35,7 +35,7 @@ jobs:
         shell: bash
         run: |
           mkdir -p bora/runtime
-          cp * .[^.]* bora/runtime/ || true
+          xcopy /E /I /H .\* bora/runtime
           cd bora
           git clone https://github.com/boradevelopment/bora-global.git global
 
@@ -55,7 +55,7 @@ jobs:
       - name: Create Bora Structure
         run: |
           mkdir -p bora/runtime
-          cp * .[^.]* bora/runtime/ || true
+          cp -r ./* bora/runtime/
           cd bora
           git clone https://github.com/boradevelopment/bora-global.git global
 
