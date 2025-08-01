@@ -1,2 +1,0 @@
-# Dev Notice in the future
-The wasm-micro-runtime folder contains the entire git repository of the microruntime, including unneeded tools and things that the runtime will not ever use. This will waste space in the github repository and waste time when cloning the project. This needs to be changed to only include the required files to build the runtime.

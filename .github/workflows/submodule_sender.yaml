@@ -1,0 +1,17 @@
+name: Notify Root Repo
+
+on:
+  push:
+    branches: [latest]
+
+jobs:
+  notify:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Notify root repository
+        run: |
+          curl -X POST \
+            -H "Authorization: token ${{ secrets.BORA_ROOT_PAL }}" \
+            -H "Accept: application/vnd.github.v3+json" \
+            https://api.github.com/repos/boradevelopment/bora/dispatches \
+            -d '{"event_type":"update_submodule","client_payload":{"repo":"${{ github.repository }}"}}'

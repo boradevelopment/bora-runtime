@@ -1,4 +1,5 @@
 #include "hostSymbolTemplate.hpp"
+#include "../../software/common/Types.h"
 #include <iostream>
 #include <vector>
 #include <string>
@@ -15,25 +16,21 @@
 #pragma comment (lib, "Comctl32.lib")
 #endif
 
+#if __APPLE__
+#include "software/darwin/MessageBox.h"
+#endif
+
 class BoraLoggingSymbols : public HostSymbolTemplate {
 public:
     const char* get_namespace() const override {
         return "bora::logging";
     }
 
-    // Struct passed from WASM
-        enum class MessageBoxType : int64_t {
-            NONE = 0,
-            INFORMATION = 1,
-            WARNING = 2,
-            PROBLEM = 3
-        };
 
 
     struct messageBoxConfig {
         int64_t title_ptr;        // Pointer to title string
         int64_t message_ptr;      // Pointer to message string
-
         MessageBoxType type;      // Icon/severity style
     };
 
@@ -93,6 +90,8 @@ public:
         }
 
         MessageBoxA(NULL, message_str.c_str(), title_str.c_str(), iconType);
+#elif __APPLE__
+        ShowMessageBox(title_str, message_str, config.type);
 #else
         printf("NOT SUPPORTED\n");
 #endif

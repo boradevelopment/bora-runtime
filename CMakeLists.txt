@@ -1,11 +1,14 @@
-# Copyright (C) 2019 Intel Corporation.  All rights reserved.
-# SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
+# This is pretty dogshit.
 
 cmake_minimum_required (VERSION 3.14)
 
 include(CheckPIESupported)
 
-project (BORA CXX ASM C)
+
+set (BORA_RUNTIME_VERSION "0.0.1")
+set(CMAKE_CXX_STANDARD 20)
+
+project (BORA CXX ASM C OBJCXX)
 # set (CMAKE_VERBOSE_MAKEFILE 1)
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
@@ -31,9 +34,6 @@ endif ()
 # Reset default linker flags
 set (CMAKE_SHARED_LIBRARY_LINK_C_FLAGS "")
 set (CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS "")
-set (BORA_RUNTIME_VERSION "0.0.1")
-
-set(CMAKE_CXX_STANDARD 20)
 
 set(WAMR_BUILD_DEBUG_INTERP 1)
 
@@ -229,7 +229,6 @@ endif()
 
 add_dependencies(BORA BORA_COMPAT)
 
-
 elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
     set (WAMR_BUILD_PLATFORM "linux")
 
@@ -405,8 +404,6 @@ elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 
     if (CMAKE_BUILD_TYPE STREQUAL "Debug")
         target_link_libraries(BORA PRIVATE ${BORA_SOURCES_3RDPARTYDLIB} ${LLVM_AVAILABLE_LIBS} ${UV_A_LIBS} -lm -ldl -lpthread)
-
-
     else ()
         target_link_libraries(BORA PRIVATE ${BORA_SOURCES_3RDPARTYLIB} ${LLVM_AVAILABLE_LIBS} ${UV_A_LIBS} -lm -ldl -lpthread)
     endif()
@@ -459,4 +456,183 @@ elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
     endif()
 
    # add_dependencies(BORA BORA_COMPAT)
+elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+    set (WAMR_BUILD_PLATFORM "darwin")
+
+    # Reset default linker flags
+    set (CMAKE_SHARED_LIBRARY_LINK_C_FLAGS "")
+    set (CMAKE_SHARED_LIBRARY_LINK_CXX_FLAGS "")
+
+    # Set WAMR_BUILD_TARGET, currently values supported:
+    # "X86_64", "AMD_64", "X86_32", "AARCH64[sub]", "ARM[sub]", "THUMB[sub]",
+    # "MIPS", "XTENSA", "RISCV64[sub]", "RISCV32[sub]"
+    if (NOT DEFINED WAMR_BUILD_TARGET)
+        if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)")
+            set (WAMR_BUILD_TARGET "AARCH64")
+        elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "riscv64")
+            set (WAMR_BUILD_TARGET "RISCV64")
+        elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)
+            # Build as X86_64 by default in 64-bit platform
+            set (WAMR_BUILD_TARGET "X86_64")
+        elseif (CMAKE_SIZEOF_VOID_P EQUAL 4)
+            # Build as X86_32 by default in 32-bit platform
+            set (WAMR_BUILD_TARGET "X86_32")
+        else ()
+            message(SEND_ERROR "Unsupported build target platform!")
+        endif ()
+    endif ()
+
+
+    if (NOT DEFINED WAMR_BUILD_INTERP)
+        # Enable Interpreter by default
+        set (WAMR_BUILD_INTERP 1)
+    endif ()
+
+    if (NOT DEFINED WAMR_BUILD_AOT)
+        # Enable AOT by default.
+        set (WAMR_BUILD_AOT 0)
+    endif ()
+
+    if (NOT DEFINED WAMR_BUILD_JIT)
+        # Disable JIT by default.
+        set (WAMR_BUILD_JIT 0)
+    endif ()
+
+    if (NOT DEFINED WAMR_BUILD_FAST_JIT)
+        # Disable Fast JIT by default
+        set (WAMR_BUILD_FAST_JIT 0)
+    endif ()
+
+    if (NOT DEFINED WAMR_BUILD_LIBC_BUILTIN)
+        # Enable libc builtin support by default
+        set (WAMR_BUILD_LIBC_BUILTIN 1)
+    endif ()
+
+    if (NOT DEFINED WAMR_BUILD_LIBC_WASI)
+        # Enable libc wasi support by default
+        set (WAMR_BUILD_LIBC_WASI 1)
+    endif ()
+
+    if (NOT DEFINED WAMR_BUILD_FAST_INTERP)
+        # Enable fast interpreter
+        set (WAMR_BUILD_FAST_INTERP 1)
+    endif ()
+
+    if (NOT DEFINED WAMR_BUILD_MULTI_MODULE)
+        # Disable multiple modules by default
+        set (WAMR_BUILD_MULTI_MODULE 0)
+    endif ()
+
+    if (NOT DEFINED WAMR_BUILD_LIB_PTHREAD)
+        # Disable pthread library by default
+        set (WAMR_BUILD_LIB_PTHREAD 0)
+    endif ()
+
+    if (NOT DEFINED WAMR_BUILD_LIB_WASI_THREADS)
+        # Disable wasi threads library by default
+        set (WAMR_BUILD_LIB_WASI_THREADS 0)
+    endif()
+
+    if (NOT DEFINED WAMR_BUILD_MINI_LOADER)
+        # Disable wasm mini loader by default
+        set (WAMR_BUILD_MINI_LOADER 0)
+    endif ()
+
+    if (NOT DEFINED WAMR_BUILD_SIMD)
+        # Enable SIMD by default
+        set (WAMR_BUILD_SIMD 1)
+    endif ()
+
+    if (NOT DEFINED WAMR_BUILD_REF_TYPES)
+        # Enable reference types by default
+        set (WAMR_BUILD_REF_TYPES 1)
+    endif ()
+
+    if (NOT DEFINED WAMR_BUILD_DEBUG_INTERP)
+        # Disable Debug feature by default
+        set (WAMR_BUILD_DEBUG_INTERP 1)
+    endif ()
+
+    if (WAMR_BUILD_DEBUG_INTERP EQUAL 1)
+        set (WAMR_BUILD_FAST_INTERP 0)
+        set (WAMR_BUILD_MINI_LOADER 0)
+        set (WAMR_BUILD_SIMD 0)
+    endif ()
+
+    if (NOT DEFINED WAMR_BUILD_MEMORY64)
+        set (WAMR_BUILD_MEMORY64 1)
+    endif()
+
+    # if enable wasi-nn, both wasi-nn-backends and iwasm
+    # need to use same WAMR (dynamic) libraries
+    if (WAMR_BUILD_WASI_NN EQUAL 1)
+        set (BUILD_SHARED_LIBS ON)
+    endif ()
+
+
+    set (WAMR_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/contribs/wasm-micro-runtime)
+    set (CMAKE_SHARED_LINKER_FLAGS "-Wl,-U,_get_ext_lib_export_apis")
+    set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
+    set (CMAKE_MACOSX_RPATH True)
+
+    include (${WAMR_ROOT_DIR}/build-scripts/runtime_lib.cmake)
+
+    include (${SHARED_DIR}/utils/uncommon/shared_uncommon.cmake)
+    include_directories(${WAMR_ROOT_DIR}/product-mini/platforms/common
+            src/host/templates
+    )
+
+    # Collect source files
+    file(GLOB_RECURSE BORA_SOURCES src/*.cpp src/*.h src/*.hpp src/*.manifest src/*.mm)
+    include_directories(
+            3rdparty
+            ../global/cpp/contribs/TAZA/code
+            ../global/cpp/contribs
+            src
+    )
+
+    # Collect source files
+    file(GLOB_RECURSE BORA_SOURCES_CONTRIB_TAZA ../global/cpp/contribs/TAZA/code/*.cpp ../global/cpp/contribs/TAZA/code/*.h ../global/cpp/contribs/TAZA/code/*.hpp)
+    file(GLOB_RECURSE BORA_SOURCES_3RDPARTY 3rdparty/**/*.cpp 3rdparty/**/*.h 3rdparty/**/*.hpp)
+
+    file(GLOB_RECURSE BORA_SOURCES_3RDPARTYDLIB ../global/libs/*.da)
+    file(GLOB_RECURSE BORA_SOURCES_3RDPARTYLIB ../global/libs/*.a)
+
+    file(GLOB_RECURSE BORA_SOURCEMM src/*.mm)
+
+    set_source_files_properties(${BORA_SOURCEMM} PROPERTIES LANGUAGE OBJCXX)
+
+
+    add_executable (BORA
+            ${BORA_SOURCES} ${PLATFORM_SHARED_SOURCE} ${UNCOMMON_SHARED_SOURCE} ${UTILS_SHARED_SOURCE} ${BORA_SOURCES_CONTRIB_TAZA} ${BORA_SOURCES_3RDPARTY}
+    )
+
+    target_compile_options(BORA PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:-include ${CMAKE_CURRENT_SOURCE_DIR}/../global/cpp/contribs/TypeDefinitions.h>
+    )
+
+    target_compile_definitions(BORA PRIVATE
+            TAZABASEDIR=\"${CMAKE_SOURCE_DIR}../global/cpp/contribs/TAZA/code\"
+    )
+
+
+
+    set_version_info (BORA)
+
+    target_sources(BORA PRIVATE ${WAMR_RUNTIME_LIB_SOURCE})
+
+    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+        target_link_libraries(BORA PRIVATE ${LLVM_AVAILABLE_LIBS} ${UV_A_LIBS} -lm -ldl -lpthread)
+    else ()
+        target_link_libraries(BORA PRIVATE ${LLVM_AVAILABLE_LIBS} ${UV_A_LIBS} -lm -ldl -lpthread)
+    endif()
+
+    target_link_directories(BORA PRIVATE ../global/libs/__apple__)
+
+    target_link_libraries(BORA PRIVATE
+            #${BORA_SOURCES_3RDPARTYDLIB}
+            -lbrotlienc -lbrotlidec -lbrotlicommon
+            "-framework AppKit"
+    )
+
 endif()

@@ -372,7 +372,7 @@ free_func(
     free(ptr);
 }
 #endif /* end of WASM_ENABLE_GLOBAL_HEAP_POOL */
-#elif __linux__
+#else
 #if WASM_ENABLE_GLOBAL_HEAP_POOL != 0
 static char global_heap_buf[WASM_GLOBAL_HEAP_SIZE] = { 0 };
 #else
@@ -468,22 +468,7 @@ module_destroyer_callback(uint8 *buffer, uint32 size)
 #endif /* WASM_ENABLE_MULTI_MODULE */
 
 size_t get_default_heap_size() {
-    // On desktop, maybe 16MB
-    // On embedded, maybe 512KB
-    // For demo, use 4MB fallback
-#ifdef _WIN32
-    MEMORYSTATUSEX status;
-    status.dwLength = sizeof(status);
-    GlobalMemoryStatusEx(&status);
-    size_t avail = (size_t)status.ullAvailPhys;
-    return (avail > (64 * 1024 * 1024)) ? (16 * 1024 * 1024) : (4 * 1024 * 1024);
-#else
-    // POSIX
-    long pages = sysconf(_SC_AVPHYS_PAGES);
-    long page_size = sysconf(_SC_PAGE_SIZE);
-    size_t avail = pages * page_size;
-    return (avail > (64 * 1024 * 1024)) ? (16 * 1024 * 1024) : (4 * 1024 * 1024);
-#endif
+   return 1;
 }
 
 size_t get_default_stack_size() {
