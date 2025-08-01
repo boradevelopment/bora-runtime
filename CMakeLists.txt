@@ -8,10 +8,10 @@ include(CheckPIESupported)
 set (BORA_RUNTIME_VERSION "0.0.1")
 set(CMAKE_CXX_STANDARD 20)
 
-project (BORA CXX ASM C OBJCXX)
 # set (CMAKE_VERBOSE_MAKEFILE 1)
 
 option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
+project (BORA CXX ASM C)
 
 if (WIN32)
 set (WAMR_BUILD_PLATFORM "windows")
@@ -142,7 +142,7 @@ endif ()
 #set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -fstack-protector-strong --param ssp-buffer-size=4")
 #set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wl,-z,noexecstack,-z,relro,-z,now")
 
-include (${SHARED_DIR}/utils/uncommon/shared_uncommon.cmake)
+include (${WAMR_ROOT_DIR}/core/shared/utils/uncommon/shared_uncommon.cmake)
 include_directories(${WAMR_ROOT_DIR}/product-mini/platforms/common
 src/host/templates
 )
@@ -175,7 +175,7 @@ target_compile_definitions(BORA PRIVATE
 )
 
 
-set_version_info (BORA)
+#set_version_info (BORA)
 
 target_sources(BORA PRIVATE ${WAMR_RUNTIME_LIB_SOURCE})
 
@@ -207,8 +207,8 @@ target_include_directories(BORA_COMPAT PRIVATE
         contribs/TAZA/code
 )
 
-# Optionally add version info
-set_version_info(BORA_COMPAT)
+
+#set_version_info(BORA_COMPAT)
 
 set_target_properties(BORA_COMPAT PROPERTIES OUTPUT_NAME "BORA_COMPAT_${BORA_RUNTIME_VERSION}")
 
@@ -365,7 +365,7 @@ elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
         endif ()
     endif ()
 
-    include (${SHARED_DIR}/utils/uncommon/shared_uncommon.cmake)
+    include (${WAMR_ROOT_DIR}/core/shared/utils/uncommon/shared_uncommon.cmake)
     include_directories(${WAMR_ROOT_DIR}/product-mini/platforms/common
             src/host/templates
     )
@@ -398,7 +398,7 @@ elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
     )
 
 
-    set_version_info (BORA)
+   # set_version_info (BORA)
 
     target_sources(BORA PRIVATE ${WAMR_RUNTIME_LIB_SOURCE})
 
@@ -457,6 +457,8 @@ elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
 
    # add_dependencies(BORA BORA_COMPAT)
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
+    enable_language(OBJCXX)
+
     set (WAMR_BUILD_PLATFORM "darwin")
 
     # Reset default linker flags
@@ -577,7 +579,7 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
 
     include (${WAMR_ROOT_DIR}/build-scripts/runtime_lib.cmake)
 
-    include (${SHARED_DIR}/utils/uncommon/shared_uncommon.cmake)
+    include (${WAMR_ROOT_DIR}/core/shared/utils/uncommon/shared_uncommon.cmake)
     include_directories(${WAMR_ROOT_DIR}/product-mini/platforms/common
             src/host/templates
     )
@@ -617,7 +619,7 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
 
 
 
-    set_version_info (BORA)
+    #set_version_info (BORA)
 
     target_sources(BORA PRIVATE ${WAMR_RUNTIME_LIB_SOURCE})
 
