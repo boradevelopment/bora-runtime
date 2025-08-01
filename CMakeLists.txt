@@ -185,11 +185,8 @@ else ()
 endif()
 
 # Compatibility DLL target
-file(GLOB_RECURSE BORA_COMPAT_SOURCES compat_src/*.cpp compat_src/*.h compat_src/*.hpp)
-
 add_library(BORA_COMPAT SHARED
         src/comp.def
-        ${BORA_COMPAT_SOURCES}
         ${BORA_SOURCES} ${PLATFORM_SHARED_SOURCE} ${UNCOMMON_SHARED_SOURCE} ${UTILS_SHARED_SOURCE} ${BORA_SOURCES_CONTRIB_TAZA} ${BORA_SOURCES_3RDPARTY}
 )
 
@@ -207,10 +204,7 @@ target_include_directories(BORA_COMPAT PRIVATE
 )
 
 
-#set_version_info(BORA_COMPAT)
-
 set_target_properties(BORA_COMPAT PROPERTIES OUTPUT_NAME "BORA_COMPAT_${BORA_RUNTIME_VERSION}")
-
 
 # Export settings or defines if needed
 target_compile_definitions(BORA_COMPAT PRIVATE
@@ -414,18 +408,17 @@ elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
             -lbrotlienc -lbrotlidec -lbrotlicommon
     )
 
-    # Compatibility DLL target
-    file(GLOB_RECURSE BORA_COMPAT_SOURCES compat_src/*.cpp compat_src/*.h compat_src/*.hpp)
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-exported_symbol,_main")
 
+    # Compatibility DLL target
     add_library(BORA_COMPAT SHARED
-            src/comp.def
-            ${BORA_COMPAT_SOURCES}
             ${BORA_SOURCES} ${PLATFORM_SHARED_SOURCE} ${UNCOMMON_SHARED_SOURCE} ${UTILS_SHARED_SOURCE} ${BORA_SOURCES_CONTRIB_TAZA} ${BORA_SOURCES_3RDPARTY}
     )
 
-#    target_compile_options(BORA_COMPAT PRIVATE
-#            $<$<AND:$<OR:$<CXX_COMPILER_ID:GNU>,$<CXX_COMPILER_ID:Clang>>,$<COMPILE_LANGUAGE:CXX>>:-include ${CMAKE_CURRENT_SOURCE_DIR}/src/TypeDefinitions.h>
-#    )
+
+    target_compile_options(BORA_COMPAT PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:-include ${CMAKE_CURRENT_SOURCE_DIR}/../global/cpp/contribs/TypeDefinitions.h>
+    )
 
     # Include the runtime source headers for use in compatibility layer
     target_include_directories(BORA_COMPAT PRIVATE
@@ -433,28 +426,34 @@ elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
             ${WAMR_ROOT_DIR}/product-mini/platforms/common
             src/host/templates
             3rdparty
-            ../global/cpp/contribs/TAZA/code
+            contribs/TAZA/code
     )
 
 
     set_target_properties(BORA_COMPAT PROPERTIES OUTPUT_NAME "BORA_COMPAT_${BORA_RUNTIME_VERSION}")
 
-
     # Export settings or defines if needed
     target_compile_definitions(BORA_COMPAT PRIVATE
-            TAZABASEDIR=\"${CMAKE_SOURCE_DIR}../global/cpp/contribs/TAZA/code\"
+            TAZABASEDIR=\"${CMAKE_SOURCE_DIR}/contribs/TAZA/code\"
     )
 
     target_sources(BORA_COMPAT PRIVATE ${WAMR_RUNTIME_LIB_SOURCE})
 
 
     if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-        target_link_libraries(BORA_COMPAT PRIVATE ${BORA_SOURCES_3RDPARTYDLIB} ntdll)
+        target_link_libraries(BORA_COMPAT PRIVATE ${BORA_SOURCES_3RDPARTYDLIB} ${LLVM_AVAILABLE_LIBS} ${UV_A_LIBS} -lm -ldl -lpthread)
     else ()
-        target_link_libraries(BORA_COMPAT PRIVATE ${BORA_SOURCES_3RDPARTYLIB} ntdll)
+        target_link_libraries(BORA_COMPAT PRIVATE ${BORA_SOURCES_3RDPARTYLIB} ${LLVM_AVAILABLE_LIBS} ${UV_A_LIBS} -lm -ldl -lpthread)
     endif()
 
-   # add_dependencies(BORA BORA_COMPAT)
+    target_link_directories(BORA_COMPAT PRIVATE ../global/libs/__linux__)
+
+    target_link_libraries(BORA_COMPAT PRIVATE
+            #${BORA_SOURCES_3RDPARTYDLIB}
+            -lbrotlienc -lbrotlidec -lbrotlicommon
+    )
+
+    add_dependencies(BORA BORA_COMPAT)
 elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
     enable_language(OBJCXX)
 
@@ -622,11 +621,7 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
 
     target_sources(BORA PRIVATE ${WAMR_RUNTIME_LIB_SOURCE})
 
-    if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-        target_link_libraries(BORA PRIVATE ${LLVM_AVAILABLE_LIBS} ${UV_A_LIBS} -lm -ldl -lpthread)
-    else ()
-        target_link_libraries(BORA PRIVATE ${LLVM_AVAILABLE_LIBS} ${UV_A_LIBS} -lm -ldl -lpthread)
-    endif()
+    target_link_libraries(BORA PRIVATE ${LLVM_AVAILABLE_LIBS} ${UV_A_LIBS} -lm -ldl -lpthread)
 
     if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)")
     target_link_directories(BORA PRIVATE ../global/libs/__apple__)
@@ -640,4 +635,48 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
             "-framework AppKit"
     )
 
+    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-exported_symbol,_main")
+
+    # Compatibility DLL target
+    add_library(BORA_COMPAT SHARED
+            ${BORA_SOURCES} ${PLATFORM_SHARED_SOURCE} ${UNCOMMON_SHARED_SOURCE} ${UTILS_SHARED_SOURCE} ${BORA_SOURCES_CONTRIB_TAZA} ${BORA_SOURCES_3RDPARTY}
+    )
+
+    target_compile_options(BORA_COMPAT PRIVATE
+            $<$<COMPILE_LANGUAGE:CXX>:-include ${CMAKE_CURRENT_SOURCE_DIR}/../global/cpp/contribs/TypeDefinitions.h>
+    )
+
+    target_sources(BORA_COMPAT PRIVATE ${WAMR_RUNTIME_LIB_SOURCE})
+
+    # Include the runtime source headers for use in compatibility layer
+    target_include_directories(BORA_COMPAT PRIVATE
+            ${CMAKE_CURRENT_SOURCE_DIR}/src
+            ${WAMR_ROOT_DIR}/product-mini/platforms/common
+            src/host/templates
+            3rdparty
+            contribs/TAZA/code
+    )
+
+    set_target_properties(BORA_COMPAT PROPERTIES OUTPUT_NAME "BORA_COMPAT_${BORA_RUNTIME_VERSION}")
+
+    # Export settings or defines if needed
+    target_compile_definitions(BORA_COMPAT PRIVATE
+            TAZABASEDIR=\"${CMAKE_SOURCE_DIR}/contribs/TAZA/code\"
+    )
+
+    target_link_libraries(BORA_COMPAT PRIVATE ${LLVM_AVAILABLE_LIBS} ${UV_A_LIBS} -lm -ldl -lpthread)
+
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)")
+        target_link_directories(BORA_COMPAT PRIVATE ../global/libs/__apple__)
+    else()
+        target_link_directories(BORA_COMPAT PRIVATE ../global/libs/__apple__x86)
+    endif()
+
+    target_link_libraries(BORA_COMPAT PRIVATE
+            #${BORA_SOURCES_3RDPARTYDLIB}
+            -lbrotlienc -lbrotlidec -lbrotlicommon
+            "-framework AppKit"
+    )
+
+    add_dependencies(BORA BORA_COMPAT)
 endif()
