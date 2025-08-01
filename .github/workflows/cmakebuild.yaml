@@ -14,7 +14,7 @@ jobs:
       - name: Build with CMake
         uses: threeal/cmake-action@v2.1.0
         with:
-          source-dir: src
+          source-dir: ./
           build-dir: build/linux
 
   build-windows:
@@ -27,7 +27,7 @@ jobs:
       - name: Build with CMake
         uses: threeal/cmake-action@v2.1.0
         with:
-          source-dir: src
+          source-dir: ./
           build-dir: build/win32
 
   build-macos:
@@ -40,5 +40,5 @@ jobs:
       - name: Build with CMake
         uses: threeal/cmake-action@v2.1.0
         with:
-          source-dir: src
+          source-dir: ./
           build-dir: build/darwin
