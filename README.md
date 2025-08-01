@@ -1,4 +1,4 @@
-# BORA Runtime
+# BORA Runtime [testing]
 Tested on Windows 11 and Ubuntu and MacOS
 
 # Building
