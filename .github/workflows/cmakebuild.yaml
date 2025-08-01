@@ -42,7 +42,7 @@ jobs:
 
   build-macos:
     name: Build on macOS
-    runs-on: macos-13
+    runs-on: macos-14-arm64 # Currently, i haven't built the libraries for x86
     steps:
       - name: Checkout Project
         uses: actions/checkout@v4.2.2
