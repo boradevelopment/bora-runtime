@@ -4,7 +4,6 @@ cmake_minimum_required (VERSION 3.14)
 
 include(CheckPIESupported)
 
-
 set (BORA_RUNTIME_VERSION "0.0.1")
 set(CMAKE_CXX_STANDARD 20)
 
@@ -408,7 +407,7 @@ elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
         target_link_libraries(BORA PRIVATE ${BORA_SOURCES_3RDPARTYLIB} ${LLVM_AVAILABLE_LIBS} ${UV_A_LIBS} -lm -ldl -lpthread)
     endif()
 
-    target_link_directories(BORA PRIVATE ../global/libs)
+    target_link_directories(BORA PRIVATE ../global/libs/__linux__)
 
     target_link_libraries(BORA PRIVATE
             #${BORA_SOURCES_3RDPARTYDLIB}
