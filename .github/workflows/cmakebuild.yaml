@@ -1,0 +1,44 @@
+name: Build on latest
+
+on:
+  push:
+
+jobs:
+  build-linux:
+    name: Build on Linux
+    runs-on: ubuntu-24.04
+    steps:
+      - name: Checkout Project
+        uses: actions/checkout@v4.2.2
+
+      - name: Build with CMake
+        uses: threeal/cmake-action@v2.1.0
+        with:
+          source-dir: src
+          build-dir: build/linux
+
+  build-windows:
+    name: Build on Windows
+    runs-on: windows-latest
+    steps:
+      - name: Checkout Project
+        uses: actions/checkout@v4.2.2
+
+      - name: Build with CMake
+        uses: threeal/cmake-action@v2.1.0
+        with:
+          source-dir: src
+          build-dir: build/win32
+
+  build-macos:
+    name: Build on macOS
+    runs-on: macos-13
+    steps:
+      - name: Checkout Project
+        uses: actions/checkout@v4.2.2
+
+      - name: Build with CMake
+        uses: threeal/cmake-action@v2.1.0
+        with:
+          source-dir: src
+          build-dir: build/darwin
