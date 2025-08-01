@@ -628,7 +628,11 @@ elseif(${CMAKE_SYSTEM_NAME} STREQUAL "Darwin")
         target_link_libraries(BORA PRIVATE ${LLVM_AVAILABLE_LIBS} ${UV_A_LIBS} -lm -ldl -lpthread)
     endif()
 
+    if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)")
     target_link_directories(BORA PRIVATE ../global/libs/__apple__)
+    else()
+    target_link_directories(BORA PRIVATE ../global/libs/__apple__x86)
+    endif()
 
     target_link_libraries(BORA PRIVATE
             #${BORA_SOURCES_3RDPARTYDLIB}

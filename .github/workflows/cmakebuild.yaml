@@ -40,9 +40,9 @@ jobs:
           source-dir: ./
           build-dir: build/win32
 
-  build-macos:
-    name: Build on macOS
-    runs-on: macos-13-arm64 # Currently, i haven't built the libraries for x86
+  build-macos-arm:
+    name: Build on macOS ARM
+    runs-on: macos-latest
     steps:
       - name: Checkout Project
         uses: actions/checkout@v4.2.2
@@ -52,6 +52,24 @@ jobs:
           cd ../
           git clone https://github.com/boradevelopment/bora-global.git global
           
+      - name: Build with CMake
+        uses: threeal/cmake-action@v2.1.0
+        with:
+          source-dir: ./
+          build-dir: build/darwin
+
+  build-macos-x86:
+    name: Build on macOS x86
+    runs-on: macos-13
+    steps:
+      - name: Checkout Project
+        uses: actions/checkout@v4.2.2
+
+      - name: Create Bora Structure
+        run: |
+          cd ../
+          git clone https://github.com/boradevelopment/bora-global.git global
+
       - name: Build with CMake
         uses: threeal/cmake-action@v2.1.0
         with:
