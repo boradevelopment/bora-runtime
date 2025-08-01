@@ -14,14 +14,14 @@ jobs:
       - name: Create Bora Structure
         run: |
           mkdir -p bora/runtime
-          mv * .[^.]* bora/runtime/ || true
+          cp * .[^.]* bora/runtime/ || true
           cd bora
           git clone https://github.com/boradevelopment/bora-global.git global
 
       - name: Build with CMake
         uses: threeal/cmake-action@v2.1.0
         with:
-          source-dir: ./runtime
+          source-dir: bora/runtime
           build-dir: build/linux
 
   build-windows:
@@ -35,14 +35,14 @@ jobs:
         shell: bash
         run: |
           mkdir -p bora/runtime
-          mv * .[^.]* bora/runtime/ || true
+          cp * .[^.]* bora/runtime/ || true
           cd bora
           git clone https://github.com/boradevelopment/bora-global.git global
 
       - name: Build with CMake
         uses: threeal/cmake-action@v2.1.0
         with:
-          source-dir: ./runtime
+          source-dir: bora/runtime
           build-dir: build/win32
 
   build-macos:
@@ -55,12 +55,12 @@ jobs:
       - name: Create Bora Structure
         run: |
           mkdir -p bora/runtime
-          mv * .[^.]* bora/runtime/ || true
+          cp * .[^.]* bora/runtime/ || true
           cd bora
           git clone https://github.com/boradevelopment/bora-global.git global
 
       - name: Build with CMake
         uses: threeal/cmake-action@v2.1.0
         with:
-          source-dir: ./runtime
+          source-dir: bora/runtime
           build-dir: build/darwin
