@@ -407,9 +407,7 @@ elseif (${CMAKE_SYSTEM_NAME} STREQUAL "Linux")
             #${BORA_SOURCES_3RDPARTYDLIB}
             -lbrotlienc -lbrotlidec -lbrotlicommon
     )
-
-    set(CMAKE_SHARED_LINKER_FLAGS "${CMAKE_SHARED_LINKER_FLAGS} -Wl,-exported_symbol,main")
-
+    
     # Compatibility DLL target
     add_library(BORA_COMPAT SHARED
             ${BORA_SOURCES} ${PLATFORM_SHARED_SOURCE} ${UNCOMMON_SHARED_SOURCE} ${UTILS_SHARED_SOURCE} ${BORA_SOURCES_CONTRIB_TAZA} ${BORA_SOURCES_3RDPARTY}
