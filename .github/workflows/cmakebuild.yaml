@@ -2,6 +2,10 @@ name: Build on push
 
 on:
   push:
+      paths:
+      - 'src/**'
+      - 'contribs/**'
+      - '.github/workflows/cmakebuild.yaml'
 
 jobs:
   build-linux:
