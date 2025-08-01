@@ -37,7 +37,7 @@ jobs:
       - name: Build with CMake
         uses: threeal/cmake-action@v2.1.0
         with:
-          source-dir: bora/runtime
+          source-dir: ./
           build-dir: build/win32
 
   build-macos:
@@ -55,5 +55,5 @@ jobs:
       - name: Build with CMake
         uses: threeal/cmake-action@v2.1.0
         with:
-          source-dir: bora/runtime
+          source-dir: ./
           build-dir: build/darwin
