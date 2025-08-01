@@ -1,4 +1,4 @@
-name: Build on latest
+name: Build on push
 
 on:
   push:
@@ -11,10 +11,17 @@ jobs:
       - name: Checkout Project
         uses: actions/checkout@v4.2.2
 
+      - name: Create Bora Structure
+        run: |
+          mkdir -p bora/runtime
+          mv * .[^.]* bora/runtime/ || true
+          cd bora
+          git clone https://github.com/boradevelopment/bora-global.git global
+
       - name: Build with CMake
         uses: threeal/cmake-action@v2.1.0
         with:
-          source-dir: ./
+          source-dir: ./runtime
           build-dir: build/linux
 
   build-windows:
@@ -24,10 +31,18 @@ jobs:
       - name: Checkout Project
         uses: actions/checkout@v4.2.2
 
+      - name: Create Bora Structure
+        shell: bash
+        run: |
+          mkdir -p bora/runtime
+          mv * .[^.]* bora/runtime/ || true
+          cd bora
+          git clone https://github.com/boradevelopment/bora-global.git global
+
       - name: Build with CMake
         uses: threeal/cmake-action@v2.1.0
         with:
-          source-dir: ./
+          source-dir: ./runtime
           build-dir: build/win32
 
   build-macos:
@@ -37,8 +52,15 @@ jobs:
       - name: Checkout Project
         uses: actions/checkout@v4.2.2
 
+      - name: Create Bora Structure
+        run: |
+          mkdir -p bora/runtime
+          mv * .[^.]* bora/runtime/ || true
+          cd bora
+          git clone https://github.com/boradevelopment/bora-global.git global
+
       - name: Build with CMake
         uses: threeal/cmake-action@v2.1.0
         with:
-          source-dir: ./
+          source-dir: ./runtime
           build-dir: build/darwin
