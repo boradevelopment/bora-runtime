@@ -1,15 +1,14 @@
-/*
- * Copyright (C) 2019 Intel Corporation.  All rights reserved.
- * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
- */
-
-#include <stdlib.h>
-#include <string.h>
-#include "TAZA.h"
+// this is a huge pile of dogshit, clean up this up immediately soon.
+#pragma once
+#ifndef WRAPPER
 #include "bh_platform.h"
 #include "bh_read_file.h"
 #include "wasm_export.h"
+#include "TAZA.h"
+#include <stdlib.h>
+#include <string.h>
 #include "tools/AppParam.h"
+
 #if __linux__
 #include <dlfcn.h>
 #endif
@@ -18,6 +17,7 @@
 #include "libc_wasi.c"
 #endif
 
+
 static int app_argc;
 static char **app_argv;
 
@@ -25,11 +25,69 @@ static char **app_argv;
 
 using InitializeSymbolsFunc = int(*)(int, char * b[]);
 
+
+inline std::wstring UTF8ToWString2(const std::string& utf8)
+{
+    if (utf8.empty()) return {};
+    int size_needed = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), (int)utf8.size(), nullptr, 0);
+    std::wstring wstr(size_needed, 0);
+    MultiByteToWideChar(CP_UTF8, 0, utf8.data(), (int)utf8.size(), wstr.data(), size_needed);
+    return wstr;
+}
+
 #include <cstring>
 #include <string>
 #include <iostream>
 #include <vector>
+#include "SysImageMgr.h"
+#include "software/win32/rcscle.h"
+
+
+bool IsRunningAsDLL() {
+#if WIN32
+    // Get handle of current module (DLL or EXE)
+    HMODULE hModule = nullptr;
+    // If compiled inside DLL, GetModuleHandleEx can be used with address inside module
+    if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCTSTR)&IsRunningAsDLL, &hModule)) {
+        // Get the module file name
+        TCHAR path[MAX_PATH];
+        if (GetModuleFileName(hModule, path, MAX_PATH)) {
+            // Check extension for .dll or .exe (simple)
+            std::wstring filename(path);
+            size_t pos = filename.rfind('.');
+            if (pos != std::string::npos) {
+                std::wstring ext = filename.substr(pos);
+                if (wcscmp(ext.c_str(), L".dll") == 0) {
+                    return true;  // Running inside DLL
+                }
+            }
+        }
+    }
+    return false;  // Probably EXE
+#elif __linux__
+    Dl_info info = {};
+    // Take the address of some function or symbol in your code
+    if (dladdr((void*)IsRunningAsDLL, &info) != 0 && info.dli_fname) {
+        std::string filename(info.dli_fname);
+        // Check extension for .so (shared object)
+        size_t pos = filename.rfind('.');
+        if (pos != std::string::npos) {
+            std::string ext = filename.substr(pos);
+            if (ext == ".so" || ext.find(".so.") != std::string::npos) {
+                return true;  // Running inside shared library
+            }
+        }
+    }
+    return false; // Probably executable
+#endif
+}
+
 #include "host/hostSymbols.h"
+
+
+
+
+
 
 #if WIN32
 LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
@@ -77,35 +135,35 @@ static void create_window(wasm_exec_env_t exec_env, int32_t title_ptr, int32_t w
     const char CLASS_NAME[] = "MyWasmWindowClass";
 
 
-    WNDCLASS wc = {};
-    wc.lpfnWndProc   = WindowProc;
-    wc.hInstance     = GetModuleHandle(NULL);
-    wc.lpszClassName = CLASS_NAME;
-
-    RegisterClass(&wc);
-
-    HWND hwnd = CreateWindowEx(
-            0,
-            CLASS_NAME,
-            window_title.c_str(),
-            WS_OVERLAPPEDWINDOW,
-            CW_USEDEFAULT, CW_USEDEFAULT,
-            width, height,
-            NULL,
-            NULL,
-            GetModuleHandle(NULL),
-            NULL
-    );
-
-    if (hwnd == NULL) {
-        std::cerr << "Failed to create window" << std::endl;
-        return;
-    }
-
-    ShowWindow(hwnd, SW_SHOW);
-    UpdateWindow(hwnd);
-
-    run_message_loop();
+//    WNDCLASS wc = {};
+//    wc.lpfnWndProc   = WindowProc;
+//    wc.hInstance     = GetModuleHandle(NULL);
+//    wc.lpszClassName = CLASS_NAME;
+//
+//    RegisterClass(&wc);
+//
+//    HWND hwnd = CreateWindowEx(
+//            0,
+//            CLASS_NAME,
+//            window_title.c_str(),
+//            WS_OVERLAPPEDWINDOW,
+//            CW_USEDEFAULT, CW_USEDEFAULT,
+//            width, height,
+//            NULL,
+//            NULL,
+//            GetModuleHandle(NULL),
+//            NULL
+//    );
+//
+//    if (hwnd == NULL) {
+//        std::cerr << "Failed to create window" << std::endl;
+//        return;
+//    }
+//
+//    ShowWindow(hwnd, SW_SHOW);
+//    UpdateWindow(hwnd);
+//
+//    run_message_loop();
 }
 
 #else
@@ -480,104 +538,48 @@ size_t get_default_stack_size() {
 }
 
 
-bool IsRunningAsDLL() {
-#if WIN32
-    // Get handle of current module (DLL or EXE)
-    HMODULE hModule = nullptr;
-    // If compiled inside DLL, GetModuleHandleEx can be used with address inside module
-    if (GetModuleHandleEx(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS, (LPCTSTR)&IsRunningAsDLL, &hModule)) {
-        // Get the module file name
-        TCHAR path[MAX_PATH];
-        if (GetModuleFileName(hModule, path, MAX_PATH)) {
-            // Check extension for .dll or .exe (simple)
-            std::string filename(path);
-            size_t pos = filename.rfind('.');
-            if (pos != std::string::npos) {
-                std::string ext = filename.substr(pos);
-                if (strcmp(ext.c_str(), ".dll") == 0) {
-                    return true;  // Running inside DLL
-                }
-            }
-        }
-    }
-    return false;  // Probably EXE
-#elif __linux__
-    Dl_info info = {};
-    // Take the address of some function or symbol in your code
-    if (dladdr((void*)IsRunningAsDLL, &info) != 0 && info.dli_fname) {
-        std::string filename(info.dli_fname);
-        // Check extension for .so (shared object)
-        size_t pos = filename.rfind('.');
-        if (pos != std::string::npos) {
-            std::string ext = filename.substr(pos);
-            if (ext == ".so" || ext.find(".so.") != std::string::npos) {
-                return true;  // Running inside shared library
-            }
-        }
-    }
-    return false; // Probably executable
-#endif
+// #endif
+
+
+#include "software/common/nWindow/bnWindow.h"
+#include "software/common/nWindow/bnWindowTitlebar.h"
+
+static void updateFunction(bnWindow* window, unsigned int msg, uintptr_t wParam, intptr_t lParam) {
+return;
 }
 
+bnWindow* win;
+ULONG_PTR gdiplusToken;
+
 int
-main(int argc, char *argv[])
-{
+main(int argc, char *argv[]){
+    GdiplusStartupInput gdiplusStartupInput;
+    GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
+    auto e = new bnWindowTitlebarConfig();
+    // e->buttonHoverColor = { 25, 25, 25 };
+    e->borderColor = { 255, 255, 255 };
+    e->sysButtons = 0;
+    e->enabled = true;
+
+    win = new bnWindow({ nullptr, L"BoraError1", L"", -1, new Data(R"(C:\Users\isloe\Downloads\channels4_profile.png)"),
+                         {
+
+                                 0, 0, 0,1,
+
+                         }, {0,0,0}, 8, true, e, updateFunction });
+
+    win->run();
+
+    delete win;
+    win = nullptr;
+    GdiplusShutdown(gdiplusToken);
 
     AppParam::registerParam("debug", {"-db"});
-    AppParam::registerParam("compatability", {"-comp", "-co"});
-
     AppParam::initialize(argc, argv);
 
 
-    if(!IsRunningAsDLL() && AppParam::has("compatability")) {
-        auto vString = AppParam::getValue<std::string>("compatability");
-
-#if WIN32
-        HMODULE hCompatDll = LoadLibrary(TEXT(vString.c_str()));  // adjust name as needed
-        if (!hCompatDll) {
-            std::cerr << "Failed to load Compatability DLL " << GetLastError() << "\n";
-            std::cerr << "I will use this executables compatability system\n";
-        } else {
-
-            // Get the exported function pointers
-            auto initializeSymbols = (InitializeSymbolsFunc) GetProcAddress(hCompatDll, "main");
-
-            if(!initializeSymbols){
-                std::cerr << "Not a valid compatability DLL for BORA\n";
-            } else {
-                // Call the functions
-                return initializeSymbols(argc, argv);
-            }
-        }
-#elif __linux__
-        // Open the shared library (.so)
-        void* hCompatDll = dlopen(vString.c_str(), RTLD_LAZY);
-        if (!hCompatDll) {
-            std::cerr << "Failed to load Compatibility SO: " << dlerror() << "\n";
-            std::cerr << "I will use this executable's compatibility system\n";
-        } else {
-            // Clear any existing errors
-            dlerror();
-
-            // Get the symbol pointer to "main"
-            auto initializeSymbols = (InitializeSymbolsFunc) dlsym(hCompatDll, "main");
-            const char* dlsym_error = dlerror();
-            if (dlsym_error) {
-                std::cerr << "Not a valid compatibility SO for BORA: " << dlsym_error << "\n";
-            } else {
-                // Call the function
-                return initializeSymbols(argc, argv);
-            }
-
-            // Close the shared library when done
-            dlclose(hCompatDll);
-        }
-#endif
-    }
-
-
     int32 ret = -1;
-    char *wasm_file = NULL;
+    // = NULL;
     const char *func_name = NULL;
     uint8 *wasm_file_buf = NULL;
     uint32 wasm_file_size;
@@ -761,7 +763,7 @@ main(int argc, char *argv[])
     if (argc == 0)
         return print_help();
 
-    wasm_file = argv[0];
+
     app_argc = argc;
     app_argv = argv;
 
@@ -837,56 +839,55 @@ main(int argc, char *argv[])
     bh_log_set_verbose_level(log_verbose_level);
 #endif
 
-    /* load WASM byte buffer from WASM bin file */
-//    if (!(wasm_file_buf =
-//                  (uint8 *)bh_read_file_to_buffer(wasm_file, &wasm_file_size))){
-//        wasm_runtime_destroy();
-//    }
+    char *wasm_file = argv[1];
+    V2Archive boraApp;
+    boraApp.output = wasm_file;
 
-V2Archive boraApp;
-boraApp.output = wasm_file;
-
-int resArchive = boraApp.getArchive();
-if(resArchive != 0){
-    wasm_runtime_destroy();
-    printf("This is not a BORA application\n");
-    return 1;
-}
-
-if(std::get<std::string>(boraApp.header.customVariables["id"]) != "BORA"){
-    printf("This is not a BORA application\n");
-    return 1;
-}
-
-auto entryFile = std::get<std::string>(boraApp.header.customVariables["entry"]);
-if(entryFile.empty()){
-    wasm_runtime_destroy();
-    printf("This is not a BORA application as it does not have a entry point.\n");
-    return 1;
-}
-
-
-auto entryV2File = boraApp.header.files.find(entryFile);
-if(entryV2File == boraApp.header.files.end()){
-    wasm_runtime_destroy();
-    printf("This is not a BORA application as it has an invalid entry point.\n");
-    return 1;
-}
-
-std::ifstream bla(wasm_file, std::ios::in | std::ios::binary);
-
-auto vData = boraApp.header.getV2File(bla,entryV2File->second, boraApp.iv, boraApp.key);
-if(vData.empty()){
+    int resArchive = boraApp.getArchive();
+    if(resArchive != 0){
         wasm_runtime_destroy();
+        printf("This is not a BORA application\n");
+        return 1;
+    }
+
+    if(std::get<std::string>(boraApp.header.customVariables[L"id"]) != "BORA"){
+        printf("This is not a BORA application\n");
+        return 1;
+    }
+
+    auto entryFile = std::get<std::wstring>(boraApp.header.customVariables[L"entry"]);
+    if(entryFile.empty()){
+        wasm_runtime_destroy();
+        printf("This is not a BORA application as it does not have a entry point.\n");
+        return 1;
+    }
+
+
+    auto entryV2File = boraApp.header.files.find(entryFile);
+    if(entryV2File == boraApp.header.files.end()){
+        wasm_runtime_destroy();
+        printf("This is not a BORA application as it has an invalid entry point.\n");
+        return 1;
+    }
+
+    auto logoV2File = boraApp.header.files.find(L"logo");
+
+    std::ifstream bla(wasm_file, std::ios::in | std::ios::binary);
+
+    auto logoData = boraApp.header.getV2File(bla,logoV2File->second, boraApp.iv, boraApp.key);
+
+    auto vData = boraApp.header.getV2File(bla,entryV2File->second, boraApp.iv, boraApp.key);
+    if(vData.empty()){
+        //  wasm_runtime_destroy();
         printf("This is not a BORA application as it's corrupted\n");
         return 1;
-}
+    }
 
-wasm_file_buf = vData.data();
-wasm_file_size = vData.size();
+    wasm_file_buf = vData.data();
+    wasm_file_size = vData.size();
 
 
-printf("I got the goods\n");
+    printf("I got the goods\n");
 
 #if WASM_ENABLE_AOT != 0
     if (wasm_runtime_is_xip_file(wasm_file_buf, wasm_file_size)) {
@@ -1010,3 +1011,5 @@ printf("I got the goods\n");
 
     return ret;
 }
+#endif
+
