@@ -43,7 +43,7 @@ wasm_runtime_module_realloc(wasm_module_inst_t module, uint64 ptr, uint64 size,
     wasm_runtime_module_malloc(module_inst, size, p_native_addr)
 
 #define module_free(offset) \
-    wasm_runtime_module_free(module_inst, offset)
+    wasm_runtime_module_free(module_inst, offset, true)
 /* clang-format on */
 
 typedef int (*out_func_t)(int c, void *ctx);

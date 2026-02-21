@@ -7,6 +7,10 @@
 #include "TAZA.h"
 #include <stdlib.h>
 #include <string.h>
+
+#include "host/Commands.h"
+#include "nWindow/bnMessageBox.h"
+#include "nWindow/bnUserWindow.h"
 #include "tools/AppParam.h"
 
 #if __linux__
@@ -542,10 +546,13 @@ size_t get_default_stack_size() {
 
 
 #include "software/common/nWindow/bnWindow.h"
+#include "software/common/nWindow/devBnLogoWindow.h"
 #include "software/common/nWindow/bnWindowTitlebar.h"
 
-static void updateFunction(bnWindow* window, unsigned int msg, uintptr_t wParam, intptr_t lParam) {
-return;
+static void updateFunction(bnUserWindow* window, void* userObject, unsigned int msg, uintptr_t wParam, intptr_t lParam) {
+if (msg == ON_UPDATE){
+    // std::this_thread::sleep_for(std::chrono::milliseconds(5000));
+    }
 }
 
 bnWindow* win;
@@ -555,24 +562,30 @@ int
 main(int argc, char *argv[]){
     GdiplusStartupInput gdiplusStartupInput;
     GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
-    auto e = new bnWindowTitlebarConfig();
-    // e->buttonHoverColor = { 25, 25, 25 };
-    e->borderColor = { 255, 255, 255 };
-    e->sysButtons = 0;
-    e->enabled = true;
-
-    win = new bnWindow({ nullptr, L"BoraError1", L"", -1, new Data(R"(C:\Users\isloe\Downloads\channels4_profile.png)"),
-                         {
-
-                                 0, 0, 0,1,
-
-                         }, {0,0,0}, 8, true, e, updateFunction });
-
-    win->run();
-
-    delete win;
-    win = nullptr;
-    GdiplusShutdown(gdiplusToken);
+     // CreateBlockingMessageBox(L"test", L"Messagebox Title", L"Messagebox Body for descriptions and details");
+     std::cin.get();
+     // devBnLogoWindow();
+    //  std::cin.get();
+    // auto e = new bnWindowTitlebarConfig();
+    // // e->buttonHoverColor = { 25, 25, 25 };
+    // e->borderColor = { 255, 255, 255 };
+    // e->sysButtons = 0;
+    // e->enabled = true;
+    //
+    // win = new bnUserWindow({ 1920, 1080, nullptr, L"BoraError1", L"Wano's application", -1, new Data(R"(./borat.png)"),
+    // {
+    //
+    //     0, 0, 0,1,
+    //
+    // }, {0,0,0}, 8, true, e, updateFunction });
+    //
+    // win->run();
+    // std::cin.get();
+    // delete win;
+    // win = nullptr;
+    // GdiplusShutdown(gdiplusToken);
+    // std::cin.get();
+    // return 0;
 
     AppParam::registerParam("debug", {"-db"});
     AppParam::initialize(argc, argv);
@@ -602,7 +615,7 @@ main(int argc, char *argv[]){
     RuntimeInitArgs init_args;
     char error_buf[128] = { 0 };
 #if WASM_ENABLE_LOG != 0
-    int log_verbose_level = 2;
+    int log_verbose_level = 5;
 #endif
     bool is_repl_mode = false;
     bool is_xip_file = false;
@@ -828,9 +841,7 @@ main(int argc, char *argv[]){
 
     auto* test = new hostSymbols();
     test->initalizeSymbols();
-
     test->registerSymbol();
-
 
     wasm_runtime_register_natives("bora::window", native_symbolsWin,
                                   sizeof(native_symbolsWin) / sizeof(NativeSymbol));
@@ -839,7 +850,7 @@ main(int argc, char *argv[]){
     bh_log_set_verbose_level(log_verbose_level);
 #endif
 
-    char *wasm_file = argv[1];
+    char *wasm_file = argv[0];
     V2Archive boraApp;
     boraApp.output = wasm_file;
 
@@ -937,6 +948,11 @@ main(int argc, char *argv[]){
         wasm_runtime_unload(wasm_module);
     }
 
+    HostCommandManager::AddOnUpdateHook([wasm_module_inst](u64 handle, const HostCommandListRecord& record) {
+        std::cout << "UPDATE HOOK DETECTED :" << handle << std::endl;
+    CommandRegistry::ExecuteCommandBuffer(nullptr, (u8*)wasm_runtime_addr_app_to_native(wasm_module_inst, record.wasmPtr), record.size);
+});
+
 
     wasm_function_inst_t func = wasm_runtime_lookup_function(wasm_module_inst, "get_bora_sdk_version");
     if (!func) {
@@ -968,7 +984,6 @@ main(int argc, char *argv[]){
         uint32_t debug_port = wasm_runtime_start_debug_instance(exec_env);
         printf("Debugging at %d\n", debug_port);
     }
-
 
 
 

@@ -138,10 +138,11 @@ typedef float64 CellType_F64;
         /* If memory64 is enabled, offset1 + bytes can overflow */ \
         if (disable_bounds_checks                                  \
             || (offset1 + bytes >= offset1                         \
-                && offset1 + bytes <= get_linear_mem_size()))      \
+                ))      \
             /* App heap space is not valid space for               \
              bulk memory operation */                              \
             maddr = memory->memory_data + offset1;                 \
+            \
         else                                                       \
             goto out_of_bounds;                                    \
     } while (0)
@@ -1166,6 +1167,15 @@ word_copy(uint32 *dest, uint32 *src, unsigned num)
     if (dest != src) {
         /* No overlap buffer */
         bh_assert(!((src < dest) && (dest < src + num)));
+
+        // Memory has to be commited before access
+        size_t page_size = get_page_size();
+        void *dest_page_aligned = (void *)((uintptr_t)dest & ~(page_size - 1));
+        size_t total_size = ((uintptr_t)dest + num + page_size - 1) & ~(page_size - 1);
+        total_size -= (uintptr_t)dest_page_aligned;
+
+        os_commit_memory(dest_page_aligned, total_size);
+
         for (; num > 0; num--)
             *dest++ = *src++;
     }
@@ -4645,8 +4655,8 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
 
 #if WASM_ENABLE_MEMORY64 != 0
                 if (is_memory64) {
-                    PUT_I64_TO_ADDR((mem_offset_t *)maddr,
-                                    GET_I64_FROM_ADDR(frame_sp + 2));
+                        PUT_I64_TO_ADDR((mem_offset_t *) maddr,
+                                        GET_I64_FROM_ADDR(frame_sp + 2));
                 }
                 else
 #endif
@@ -5881,10 +5891,47 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
                          * optimizations.
                          *
                          */
-                        if (len && mdst != msrc) {
-                            /* allowing the destination and source to overlap */
-                            memmove(mdst, msrc, len);
-                        }
+
+//                        __try
+//                        {
+                            uint8 *dstM = memory->heap_data + dst;
+                            uint8 *srcM = memory->heap_data + src;
+
+
+                            bool is_empty = true;
+
+                            if (msrc) {
+                                for (size_t i = 0; i < len; ++i) {
+                                    if (msrc[i] != 0) {
+                                        is_empty = false;
+                                        break;
+                                    }
+                                }
+                            } else {
+                                is_empty = false; // Can't trust memory that is null
+                            }
+
+                            if (memory->heap_data &&
+                            is_empty)
+                            {
+                                // The data is within the heap: safe to use heap_data
+                                if (mdst != srcM) {
+                                    memmove(mdst, srcM, len);     // copy to external destination if needed
+                                }
+                            }
+                            else if (len && mdst != msrc)
+                            {
+                                memmove(mdst, msrc, len);
+                            }
+
+//                        } __except (EXCEPTION_EXECUTE_HANDLER)
+//                        {
+//                            if (len && mdst != msrc) {
+//                                /* allowing the destination and source to overlap */
+//                                memmove(mdst, msrc, len);
+//                            }
+//                        }
+//
                         break;
                     }
                     case WASM_OP_MEMORY_FILL:
@@ -5922,8 +5969,13 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
                             mdst = memory->memory_data + (uint32)dst;
                         }
 #endif
+                        uint8 *dstM = memory->heap_data + (dst);
 
-                        memset(mdst, fill_val, len);
+                        if(memory->heap_data && dstM) {
+                            os_commit_memory(dstM, len);
+                            memset(dstM, fill_val, len);
+                        } else memset(mdst, fill_val, len);
+
                         break;
                     }
 #endif /* WASM_ENABLE_BULK_MEMORY */

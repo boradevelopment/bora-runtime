@@ -14,14 +14,16 @@ public:
    static std::mutex mutex;
 
 public:
-    static int32_t create_thread(wasm_exec_env_t exec_env, int32_t func_ptr, int32_t arg);
+    static int32_t create_thread(wasm_exec_env_t exec_env, u64 func_ptr, int32_t arg);
+    static int32_t join_thread(wasm_exec_env_t exec_env, u64 thread_id);
     std::vector<NativeSymbol> symbols = {
             {
                     "createThread",
                     (void*)create_thread,
-                    "(ii)i",
+                    "(Ii)i",
                     nullptr
-            }
+            },
+{"joinThread",   (void*)join_thread,   "(I)i",  nullptr}
     };
 
     const std::vector<NativeSymbol>& get_symbols() const override {

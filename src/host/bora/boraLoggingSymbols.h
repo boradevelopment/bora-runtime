@@ -64,10 +64,10 @@ public:
 
         // Resolve title and message strings
         const char* title = reinterpret_cast<const char*>(
-                wasm_runtime_addr_app_to_native(inst, (uint32_t)config.title_ptr)
+                wasm_runtime_addr_app_to_native(inst, (uint64_t)config.title_ptr)
         );
         const char* msg = reinterpret_cast<const char*>(
-                wasm_runtime_addr_app_to_native(inst, (uint32_t)config.message_ptr)
+                wasm_runtime_addr_app_to_native(inst, (uint64_t)config.message_ptr)
         );
 
         std::string title_str = title ? title : "(null)";

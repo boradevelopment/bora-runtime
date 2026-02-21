@@ -56,6 +56,7 @@ typedef struct WASMDebugExecutionMemory {
     uint64 start_offset;
     uint64 current_pos;
     uint32 size;
+    uint8* memory;
 } WASMDebugExecutionMemory;
 
 struct WASMDebugInstance {

@@ -12,6 +12,9 @@
  * undefined behavior
  */
 #pragma warning(disable : 5105)
+// _WINSOCKAPI_ issue thingy
+#pragma warning(disable : 4005)
+#include <winsock2.h>
 #include <inttypes.h>
 #include <stdbool.h>
 #include <assert.h>
@@ -32,7 +35,6 @@
 #include <malloc.h>
 #include <process.h>
 #include <winapifamily.h>
-#include <winsock2.h>
 #include <ws2tcpip.h>
 #include <windows.h>
 #include <basetsd.h>

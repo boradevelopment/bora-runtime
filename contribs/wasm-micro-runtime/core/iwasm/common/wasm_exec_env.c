@@ -25,25 +25,36 @@
 #include "../libraries/debug-engine/debug_engine.h"
 #endif
 #endif
+#include "wasm_memory.h"
 
 WASMExecEnv *
 wasm_exec_env_create_internal(struct WASMModuleInstanceCommon *module_inst,
                               uint32 stack_size)
 {
+
     uint64 total_size =
-        offsetof(WASMExecEnv, wasm_stack_u.bottom) + (uint64)stack_size;
+        offsetof(WASMExecEnv, wasm_stack_u.bottom) + (uint64)256ULL * 1024ULL * 1024ULL * 1024ULL;
     WASMExecEnv *exec_env;
 
-    if (total_size >= UINT32_MAX
-        || !(exec_env = wasm_runtime_malloc((uint32)total_size)))
-        return NULL;
+//    if (total_size >= UINT32_MAX
+//        || !(exec_env = wasm_runtime_malloc((uint32)total_size)))
+//        return NULL;
 
-    memset(exec_env, 0, (uint32)total_size);
+    exec_env = os_reserve_memory(256ULL * 1024ULL * 1024ULL * 1024ULL);
+
+   // memset(exec_env, 0, (uint32)total_size);
+
 
 #if WASM_ENABLE_AOT != 0
-    if (!(exec_env->argv_buf = wasm_runtime_malloc(sizeof(uint32) * 64))) {
+//    if (!(exec_env->argv_buf = wasm_runtime_malloc(sizeof(uint32) * 64))) {
+//        goto fail1;
+//    }
+
+    void *argv_buf_region = (uint8 *)exec_env + offsetof(WASMExecEnv, argv_buf);;
+    if (!os_commit_memory(argv_buf_region, sizeof(uint32) * 64)) {
         goto fail1;
     }
+    exec_env->argv_buf = argv_buf_region;
 #endif
 
 #if WASM_ENABLE_THREAD_MGR != 0
@@ -128,9 +139,9 @@ wasm_exec_env_destroy_internal(WASMExecEnv *exec_env)
 #endif
 #endif
 #if WASM_ENABLE_AOT != 0
-    wasm_runtime_free(exec_env->argv_buf);
+    os_free_reserved_memory(exec_env->argv_buf);
 #endif
-    wasm_runtime_free(exec_env);
+    os_free_reserved_memory(exec_env);
 }
 
 WASMExecEnv *

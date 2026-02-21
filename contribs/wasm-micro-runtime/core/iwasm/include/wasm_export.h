@@ -51,7 +51,7 @@ extern "C" {
 #define module_malloc(size, p_native_addr) \
     wasm_runtime_module_malloc(module_inst, size, p_native_addr)
 
-#define module_free(offset) wasm_runtime_module_free(module_inst, offset)
+#define module_free(offset) wasm_runtime_module_free(module_inst, offset, true)
 
 #define native_raw_return_type(type, args) type *raw_ret = (type *)(args)
 
@@ -1346,9 +1346,10 @@ wasm_runtime_module_malloc(wasm_module_inst_t module_inst, uint64_t size,
  *
  * @param module_inst the WASM module instance which contains heap
  * @param ptr the pointer to free
+ * @param delete If the pointer should be cleared and recycled or deleted.
  */
 WASM_RUNTIME_API_EXTERN void
-wasm_runtime_module_free(wasm_module_inst_t module_inst, uint64_t ptr);
+wasm_runtime_module_free(wasm_module_inst_t module_inst, uint64_t ptr, bool deleted);
 
 /**
  * Allocate memory from the heap of WASM module instance and initialize

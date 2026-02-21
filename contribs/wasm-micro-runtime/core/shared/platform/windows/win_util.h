@@ -13,6 +13,9 @@
  * undefined behavior
  */
 #pragma warning(disable : 5105)
+#define WIN32_LEAN_AND_MEAN  // Optional: reduce Windows header bloat
+#include <winsock2.h>
+#include <ws2tcpip.h>        // For modern socket helpers
 #include <windows.h>
 
 __wasi_timestamp_t

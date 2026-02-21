@@ -639,7 +639,7 @@ wasm_module_realloc_internal(WASMModuleInstance *module_inst,
 
 void
 wasm_module_free_internal(WASMModuleInstance *module_inst,
-                          WASMExecEnv *exec_env, uint64 ptr);
+                          WASMExecEnv *exec_env, uint64 ptr, bool delete);
 
 uint64
 wasm_module_malloc(WASMModuleInstance *module_inst, uint64 size,
@@ -650,7 +650,7 @@ wasm_module_realloc(WASMModuleInstance *module_inst, uint64 ptr, uint64 size,
                     void **p_native_addr);
 
 void
-wasm_module_free(WASMModuleInstance *module_inst, uint64 ptr);
+wasm_module_free(WASMModuleInstance *module_inst, uint64 ptr, bool delete);
 
 uint64
 wasm_module_dup_data(WASMModuleInstance *module_inst, const char *src,
@@ -913,11 +913,21 @@ wasm_set_module_name(WASMModule *module, const char *name, char *error_buf,
                      uint32_t error_buf_size);
 
 void* mem_allocator_heap_malloc(WASMMemoryInstance* heap, uint64_t size);
-void mem_allocator_heap_free(WASMMemoryInstance* heap, void* ptr);
+bool mem_allocator_heap_free(WASMMemoryInstance* heap, void* ptr, bool isdeleted);
 bool mem_allocator_extend_heap(WASMMemoryInstance* heap, uint8_t* new_pool, uint64 new_size);
 
 const char *
 wasm_get_module_name(WASMModule *module);
+
+
+static inline void* mem_allocator_get_heap_ptr(WASMMemoryInstance* heap, uint64_t offset) {
+    return (uint8_t*)heap->heap_data + (offset);
+}
+
+static inline uint64_t mem_allocator_get_offset(WASMMemoryInstance* heap, void* ptr) {
+    return (uint64_t)((uint8_t*)ptr - (uint8_t*)heap->heap_data);
+}
+
 
 #ifdef __cplusplus
 }

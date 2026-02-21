@@ -944,6 +944,12 @@ wasm_runtime_addr_app_to_native(WASMModuleInstanceCommon *module_inst_comm,
 
     addr = memory_inst->memory_data + (uintptr_t)app_offset;
 
+    if(!addr){
+        return memory_inst->heap_data + (uintptr_t)app_offset;
+    } else {
+     return addr;
+    }
+
     if (bounds_checks) {
         if (memory_inst->memory_data <= addr
             && addr < memory_inst->memory_data_end) {
@@ -1764,15 +1770,19 @@ wasm_allocate_linear_memory(uint8 **data, bool is_shared_memory,
 
 #if WIN32
 void* os_reserve_memory(uint64 size) {
-    return VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_NOACCESS);
+    return VirtualAlloc(NULL, size, MEM_RESERVE, PAGE_READWRITE);
 }
 
 bool os_commit_memory(void* addr, uint64 size) {
     return VirtualAlloc(addr, size, MEM_COMMIT, PAGE_READWRITE) != NULL;
 }
 
-void os_free_reserved_memory(void* addr, uint64 size) {
+void os_free_reserved_memory(void* addr) {
     VirtualFree(addr, 0, MEM_RELEASE);
+}
+
+void os_decommit_memory(void* ptr, size_t size) {
+    VirtualFree(ptr, size, MEM_DECOMMIT);
 }
 
 SIZE_T get_page_size() {
@@ -1839,7 +1849,7 @@ uasm_allocate_dynmemory(uint8 **data, bool is_shared_memory,
 
     // === Commit only the initial required memory ===
     if (!os_commit_memory(reserved_memory, init_size)) {
-        os_free_reserved_memory(reserved_memory, map_size);
+        os_free_reserved_memory(reserved_memory);
         return BHT_ERROR;
     }
 

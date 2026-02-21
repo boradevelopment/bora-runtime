@@ -922,7 +922,7 @@ wasm_runtime_module_malloc(WASMModuleInstanceCommon *module_inst, uint64 size,
 
 /* See wasm_export.h for description */
 WASM_RUNTIME_API_EXTERN void
-wasm_runtime_module_free(WASMModuleInstanceCommon *module_inst, uint64 ptr);
+wasm_runtime_module_free(WASMModuleInstanceCommon *module_inst, uint64 ptr, bool delete);
 
 /* See wasm_export.h for description */
 WASM_RUNTIME_API_EXTERN uint64

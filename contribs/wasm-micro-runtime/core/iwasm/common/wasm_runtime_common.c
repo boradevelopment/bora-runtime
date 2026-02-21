@@ -3298,7 +3298,7 @@ wasm_runtime_module_free_internal(WASMModuleInstanceCommon *module_inst,
 #if WASM_ENABLE_INTERP != 0
     if (module_inst->module_type == Wasm_Module_Bytecode) {
         wasm_module_free_internal((WASMModuleInstance *)module_inst, exec_env,
-                                  ptr);
+                                  ptr, true);
         return;
     }
 #endif
@@ -3346,11 +3346,11 @@ wasm_runtime_module_realloc(WASMModuleInstanceCommon *module_inst, uint64 ptr,
 }
 
 void
-wasm_runtime_module_free(WASMModuleInstanceCommon *module_inst, uint64 ptr)
+wasm_runtime_module_free(WASMModuleInstanceCommon *module_inst, uint64 ptr, bool delete)
 {
 #if WASM_ENABLE_INTERP != 0
     if (module_inst->module_type == Wasm_Module_Bytecode) {
-        wasm_module_free((WASMModuleInstance *)module_inst, ptr);
+        wasm_module_free((WASMModuleInstance *)module_inst, ptr, delete);
         return;
     }
 #endif

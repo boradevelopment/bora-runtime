@@ -10,6 +10,7 @@
 #include "wasm_interp.h"
 #include "wasm_opcode.h"
 #include "wasm_runtime.h"
+#include "wasm_memory.h"
 
 static const uint8 break_instr[] = { DEBUG_OP_BREAK };
 
@@ -407,9 +408,13 @@ wasm_debug_instance_create(WASMCluster *cluster, int32 port)
     /* Allocate linear memory for evaluating expressions during debugging. If
      * the allocation failed, the debugger will not be able to evaluate
      * expressions */
+    // I have to make the memory integrated into the exec_mem_info
+    instance->exec_mem_info.memory = os_reserve_memory(DEBUG_EXECUTION_MEMORY_SIZE+1);
+    os_commit_memory(instance->exec_mem_info.memory, DEBUG_EXECUTION_MEMORY_SIZE);
     instance->exec_mem_info.size = DEBUG_EXECUTION_MEMORY_SIZE;
-    instance->exec_mem_info.start_offset = wasm_runtime_module_malloc(
-        module_inst, (uint64)instance->exec_mem_info.size, NULL);
+//    instance->exec_mem_info.start_offset = wasm_runtime_module_malloc(
+//        module_inst, (uint64)instance->exec_mem_info.size, NULL);
+    instance->exec_mem_info.start_offset = (uint64)instance->exec_mem_info.memory;
     if (instance->exec_mem_info.start_offset == 0) {
         LOG_WARNING(
             "WASM Debug Engine warning: failed to allocate linear memory for "

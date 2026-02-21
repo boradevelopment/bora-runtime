@@ -39,7 +39,7 @@ wasm_runtime_set_exception(wasm_module_inst_t module, const char *exception);
     wasm_runtime_module_malloc(module_inst, size, p_native_addr)
 
 #define module_free(offset) \
-    wasm_runtime_module_free(module_inst, offset)
+    wasm_runtime_module_free(module_inst, offset, true)
 /* clang-format on */
 
 typedef struct wasi_prestat_app {

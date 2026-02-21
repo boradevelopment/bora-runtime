@@ -3,10 +3,10 @@
  * SPDX-License-Identifier: Apache-2.0 WITH LLVM-exception
  */
 
-#include "platform_api_vmcore.h"
-#include "platform_api_extension.h"
 
 #if WASM_ENABLE_SHARED_MEMORY != 0
+#include "platform_api_vmcore.h"
+#include "platform_api_extension.h"
 
 #include <atomic>
 

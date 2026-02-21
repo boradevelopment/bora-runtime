@@ -3735,14 +3735,26 @@ wasm_get_wasm_func_exec_time(const WASMModuleInstance *inst,
 }
 #endif /*WASM_ENABLE_PERF_PROFILING != 0*/
 
+static const size_t PAGE_SIZE = 4096;
+
+size_t align_to_page(size_t x) {
+    return (x + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+}
+
+
 bool
 try_grow_memory(WASMMemoryInstance *memory, uint32 new_commit_size)
 {
+
+    new_commit_size += sizeof(BlockHeader);
+
 #if WIN32
-        if (!VirtualAlloc(memory->heap_data + memory->heapCommitted_size,
-                          new_commit_size - memory->heapCommitted_size,
-                          MEM_COMMIT, PAGE_READWRITE)) {
+        void* res = VirtualAlloc(memory->heap_data + memory->heapCommitted_size,
+                                 new_commit_size - memory->heapCommitted_size,
+                  MEM_COMMIT, PAGE_READWRITE);
+        if (!res) {
             // Allocation failed: out of memory
+            DWORD err = GetLastError();
             return false;
         }
 #elif __linux__ || __APPLE__
@@ -3764,56 +3776,71 @@ void* mem_allocator_heap_malloc(WASMMemoryInstance* heap, uint64_t size) {
     // Align size if needed
     size = align_up(size, sizeof(void*)); // align to pointer size
 
-    while (curr) {
-        if (curr->size >= size) {
-            void* alloc_ptr = (void*)curr;
+    size_t total_needed = size + sizeof(BlockHeader);
 
-            if (curr->size > size + sizeof(FreeBlock)) {
-                // Split the block
-                FreeBlock* next_block = (FreeBlock*)((uint8_t*)curr + size);
-                next_block->size = curr->size - size;
+    while (curr) {
+        if (curr->size >= total_needed) {
+            if (curr->size >= total_needed + sizeof(FreeBlock)) {
+                // Split
+                FreeBlock* next_block = (FreeBlock*)((uint8_t*)curr + total_needed);
+                next_block->size = curr->size - total_needed;
                 next_block->next = curr->next;
 
-                if (prev) {
-                    prev->next = next_block;
-                } else {
-                    heap->free_list = next_block;
-                }
+                if (prev) prev->next = next_block;
+                else heap->free_list = next_block;
             } else {
                 // Use entire block
-                if (prev) {
-                    prev->next = curr->next;
-                } else {
-                    heap->free_list = curr->next;
-                }
-                size = curr->size; // adjust size to entire block size
+                total_needed = curr->size; // actual allocated size
+                if (prev) prev->next = curr->next;
+                else heap->free_list = curr->next;
             }
 
-            heap->heapFreeSize -= size;
+            heap->heapFreeSize -= total_needed;
 
-            BlockHeader* header = alloc_ptr;
-            if(!header) return NULL;
-            header->size = size;
-
+            BlockHeader* header = (BlockHeader*)curr;
+            header->size = total_needed;
             return (void*)(header + 1);
         }
 
         prev = curr;
         curr = curr->next;
     }
-
-    // No suitable block found
     return NULL;
 }
 
-void mem_allocator_heap_free(WASMMemoryInstance* heap, void* ptr) {
-    BlockHeader* header = ((BlockHeader*)ptr) - 1;
+
+bool mem_allocator_heap_free(WASMMemoryInstance* heap, void* ptr, bool isdeleted) {
+    if (!ptr) return false; // must check before dereferencing
+    BlockHeader *header = ((BlockHeader *) ptr) - 1;
+
+    // I believe that WASM can possibly double free for some odd reason. This exception prone code should prevent this from happening and allow the application to die peacefully.
+    // If i find a better way of optimizing this, this is going.
+#if WIN32
+    __try
+    {
+        header->size++;
+        header->size--;
+    }
+    __except (EXCEPTION_EXECUTE_HANDLER) {
+        return false;
+    }
+#endif
+
     uint64_t size = header->size + sizeof(BlockHeader);
+    if (size == 0)
+        return false;
 
-    if (!ptr || size == 0)
-        return;
+    if (isdeleted) {
+        // Fully deallocate and don't reuse
+        printf("Memory is being deleted | %llu | %p\n", header->size, ptr);
+        heap->heapCommitted_size -= header->size;
+        os_decommit_memory(ptr, header->size);
+        heap->free_list = NULL;
+        ptr = NULL;
+        return true;
+    }
 
-    FreeBlock* block = (FreeBlock*)ptr;
+    FreeBlock* block = (FreeBlock*)header;
     block->size = size;
     block->next = NULL;
 
@@ -3844,8 +3871,10 @@ void mem_allocator_heap_free(WASMMemoryInstance* heap, void* ptr) {
         prev->next = block->next;
     }
 
-    // Update bookkeeping
     heap->heapFreeSize += size;
+    if(heap->heapCommitted_size < header->size) heap->heapCommitted_size = 0;
+    else heap->heapCommitted_size -= header->size;
+    return true;
 }
 
 
@@ -3920,7 +3949,7 @@ wasm_module_malloc_internal(WASMModuleInstance *module_inst,
     }
 
     /* TODO: Memory64 size check based on memory idx type */
-    bh_assert(size <= UINT32_MAX);
+    //bh_assert(size <= UINT32_MAX);
 
     if (!memory) {
         wasm_set_exception(module_inst, "uninitialized memory");
@@ -3929,7 +3958,8 @@ wasm_module_malloc_internal(WASMModuleInstance *module_inst,
 
     if (memory->heapCommitted_size > 0) {
         addr = mem_allocator_heap_malloc(memory, size);
-        if(addr) return(uint64)(addr - memory->heap_data);
+        uint64 i = (uint64)(addr - memory->heap_data);
+        if(addr) return i;
     }
     else if (module_inst->e->malloc_function && module_inst->e->free_function) {
         if (!execute_malloc_function(
@@ -4012,7 +4042,7 @@ wasm_module_realloc_internal(WASMModuleInstance *module_inst,
 
 void
 wasm_module_free_internal(WASMModuleInstance *module_inst,
-                          WASMExecEnv *exec_env, uint64 ptr)
+                          WASMExecEnv *exec_env, uint64 ptr, bool delete)
 {
     WASMMemoryInstance *memory = wasm_get_default_memory(module_inst);
 
@@ -4024,7 +4054,8 @@ wasm_module_free_internal(WASMModuleInstance *module_inst,
     }
 
     if (ptr) {
-        uint8 *addr = memory->memory_data + (uint32)ptr;
+        uint8 *addr = memory->heap_data + (uint32)ptr;
+        if(!addr) return;
         uint8 *memory_data_end;
 
         /* memory->memory_data_end may be changed in memory grow */
@@ -4033,7 +4064,7 @@ wasm_module_free_internal(WASMModuleInstance *module_inst,
         SHARED_MEMORY_UNLOCK(memory);
 
         if(memory->heapCommitted_size > 0){
-            mem_allocator_heap_free(memory, addr);
+            mem_allocator_heap_free(memory, addr, delete);
             return;
         }
 
@@ -4066,9 +4097,9 @@ wasm_module_realloc(WASMModuleInstance *module_inst, uint64 ptr, uint64 size,
 }
 
 void
-wasm_module_free(WASMModuleInstance *module_inst, uint64 ptr)
+wasm_module_free(WASMModuleInstance *module_inst, uint64 ptr, bool delete)
 {
-    wasm_module_free_internal(module_inst, NULL, ptr);
+    wasm_module_free_internal(module_inst, NULL, ptr, delete);
 }
 
 uint64

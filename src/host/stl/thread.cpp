@@ -6,7 +6,7 @@ std::map<int, std::thread> BoraThreadSymbols::threads;
 std::mutex BoraThreadSymbols::mutex;
 
 
-int32_t BoraThreadSymbols::create_thread(wasm_exec_env_t exec_env, int32_t func_ptr, int32_t arg){
+int32_t BoraThreadSymbols::create_thread(wasm_exec_env_t exec_env, u64 func_ptr, int32_t arg){
     int thread_id = id_counter++;
 
 
@@ -36,8 +36,29 @@ int32_t BoraThreadSymbols::create_thread(wasm_exec_env_t exec_env, int32_t func_
     {
         std::lock_guard<std::mutex> lock(mutex);
         threads[thread_id] = std::move(t);
-        threads[thread_id].detach();
+        // threads[thread_id].detach();
     }
 
     return thread_id;
+}
+
+int32_t BoraThreadSymbols::join_thread(wasm_exec_env_t exec_env, u64 thread_id) {
+    std::thread t;
+
+    // 1. Find and extract the thread from the map
+    {
+        std::lock_guard<std::mutex> lock(mutex);
+        auto it = threads.find(thread_id);
+        if (it == threads.end()) return -1; // Thread not found or already joined
+
+        t = std::move(it->second);
+        threads.erase(it);
+    }
+
+    // 2. Wait for the physical thread to finish
+    if (t.joinable()) {
+        t.join();
+    }
+
+    return 0; // Success
 }

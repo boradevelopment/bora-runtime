@@ -18,11 +18,9 @@
 #define BORA_WASMRUNNER_H
 
 
-
 class WasmRunner {
 
 };
-
 
 
 #endif //BORA_WASMRUNNER_H

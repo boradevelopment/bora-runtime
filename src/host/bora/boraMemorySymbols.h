@@ -38,10 +38,6 @@ public:
 
     static uint64_t host_alloc(wasm_exec_env_t exec_env, uint64_t size) {
         // Allocate memory using the WASM runtime allocator
-
-        tSize += size;
-        std::cout << "new mem allocated :" << tSize << std::endl;
-
         wasm_module_inst_t module_inst = wasm_runtime_get_module_inst(exec_env);
         if (!module_inst) {
             printf("[allocate] Error: module_inst is null\n");
@@ -50,16 +46,15 @@ public:
 
         uint64_t offset = wasm_runtime_module_malloc(module_inst, size, nullptr);
 
+        std::cout << "Memory has been allocated : " << size << " : " << offset << std::endl;
+
         return offset;
     }
 
     static void host_free(wasm_exec_env_t exec_env, uint64_t offset) {
-        tSize -= sizeof(uint64_t);
-        std::cout << "new mem deallocated :" << tSize << std::endl;
-
         wasm_module_inst_t module_inst = wasm_runtime_get_module_inst(exec_env);
         if (module_inst && offset) {
-            wasm_runtime_module_free(module_inst, offset);
+            wasm_runtime_module_free(module_inst, offset, true);
         }
     }
 

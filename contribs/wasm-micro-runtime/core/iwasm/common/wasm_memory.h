@@ -37,7 +37,7 @@ SET_LINEAR_MEMORY_SIZE(WASMMemoryInstance *memory, uint64 size)
     SHARED_MEMORY_UNLOCK(memory);
 }
 #else
-#define GET_LINEAR_MEMORY_SIZE(memory) memory->memory_data_size
+#define GET_LINEAR_MEMORY_SIZE(memory) memory->heapCommitted_size
 #define SET_LINEAR_MEMORY_SIZE(memory, size) memory->memory_data_size = size
 #endif
 
@@ -101,7 +101,9 @@ void* os_reserve_memory(uint64 size);
 
 bool os_commit_memory(void* addr, uint64 size);
 
-void os_free_reserved_memory(void* addr, uint64 size);
+void os_free_reserved_memory(void* addr);
+
+void os_decommit_memory(void* ptr, size_t size);
 
 size_t get_page_size();
 
