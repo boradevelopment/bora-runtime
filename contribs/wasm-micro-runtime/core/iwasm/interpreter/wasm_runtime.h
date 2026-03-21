@@ -102,15 +102,14 @@ typedef struct WASMSharedHeap {
     uint64 start_off_mem32;
 } WASMSharedHeap;
 
-typedef struct FreeBlock {
-    struct FreeBlock* next;
-    uint64 size;  // size of free block
-} FreeBlock;
-
-typedef struct BlockHeader {
-    uint64_t size;
-} BlockHeader;
-
+// typedef struct FreeBlock {
+//     struct FreeBlock* next;
+//     uint64 size;  // size of free block
+// } FreeBlock;
+//
+// typedef struct BlockHeader {
+//     uint64_t size;
+// } BlockHeader;
 
 struct WASMMemoryInstance {
     /* Module type */
@@ -130,16 +129,16 @@ struct WASMMemoryInstance {
      * in both 64-bit and 32-bit */
     uint8 _paddings[4];
 
-    uint64 heapCommitted_size;
-
-    uint64 heapFreeSize;
+    // uint64 heapCommitted_size;
+    //
+    // uint64 heapFreeSize;
 
     /* Number bytes per page */
     uint32 num_bytes_per_page;
     /* Current page count */
-    uint32 cur_page_count;
+    uint64 cur_page_count;
     /* Maximum page count */
-    uint32 max_page_count;
+    uint64 max_page_count;
     /* Memory data size */
     uint64 memory_data_size;
     /**
@@ -152,7 +151,7 @@ struct WASMMemoryInstance {
     /* Memory data end address */
     DefPointer(uint8 *, memory_data_end);
     /* Heap List Blocks */
-    DefPointer(FreeBlock*, free_list);
+    // DefPointer(FreeBlock*, free_list);
     /* Heap data base address */
     DefPointer(uint8 *, heap_data);
     /* Heap data end address */

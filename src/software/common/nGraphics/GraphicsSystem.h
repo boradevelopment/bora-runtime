@@ -2,10 +2,12 @@
 #include "nGraphics/ImmediateGraphicsAbstract.h"
 #include "nGraphics/ExplicitGraphicsAbstract.h"
 #include <functional>
-
+#include <utility>
+#include "nGraphics/GraphicsCommands.h"
 #include "nCommon/CommandList.h"
 #include "nCommon/CommandListContainers.h"
 #include "nCommon/CommandRegistry.h"
+using namespace CommandCategories;
 
 struct GraphicsPipelineData {
     IPipeline* pl;
@@ -56,7 +58,7 @@ struct IGPUCommand : public ICommand
 {
     ~IGPUCommand() override = default;
     virtual void Execute(IGraphicsDevice* device) = 0;
-    void ExecuteStatic(void* context) override {
+    void ExecuteStatic(void* context, wasm_module_inst_t wasmModule) override {
         Execute(static_cast<IGraphicsDevice *>(context));
     }
 };
@@ -109,30 +111,35 @@ struct UnmapBufferMemoryCommand : public IGPUCommand
     }
 };
 
+
 struct CreateTextureCommand : public IGPUCommand
 {
-    TextureDesc desc;
-    const void* initialData;
-    ResourceHandle<ITexture>* handle;
-    //ITexture** outTexture;
+    CreateTextureCommandData data;
 
-    CreateTextureCommand(const TextureDesc& d, const void* data, ResourceHandle<ITexture>* out)
-        : desc(d), initialData(data), handle(out) {
+    CreateTextureCommand(const TextureDesc& d, const void* initialData, ResourceHandle<ITexture>* out) : data() {
+        data.desc = d;
+        data.initialData = initialData;
+        data.handle = out;
+    }
+
+    explicit CreateTextureCommand(CreateTextureCommandData data): data(std::move(data)) {
+
     }
 
     void Execute(IGraphicsDevice* graphicsDevice) override
     {
-       
+
         //if (graphicsDevice->GetFlags() & GraphicsDeviceFlags::IS_IMMEDIATE) {
         //    auto graphics = (IGraphicsDeviceImmediate*)(graphicsDevice);
 
         //}
 
-        if (!handle) return;
-        handle->Resolve(graphicsDevice->CreateTexture(desc, initialData));
-        handle->status = ResourceStatus::CREATED;
+        if (!data.handle) return;
+        data.handle->Resolve(graphicsDevice->CreateTexture(data.desc, data.initialData));
+        data.handle->status = ResourceStatus::CREATED;
     }
 };
+
 
 struct CreateShaderCommand : public IGPUCommand
 {
@@ -310,8 +317,6 @@ struct FunctionCommand : public IGPUCommand {
     }
 };
 
-
-
 #pragma pack(push, 1)
 struct PushGroupCommandData
 {
@@ -319,8 +324,6 @@ struct PushGroupCommandData
     uint32_t color;
 };
 #pragma pack(pop)
-
-using namespace CommandCategories;
 
 struct PushGroupCommand : public IGPUCommand {
     PushGroupCommandData data;

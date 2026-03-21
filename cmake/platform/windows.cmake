@@ -13,6 +13,7 @@ endif()
 include(${WAMR_ROOT_DIR}/core/shared/utils/uncommon/shared_uncommon.cmake)
 include_directories(${WAMR_ROOT_DIR}/product-mini/platforms/common ./src/host/templates ../global/cpp ../global/contribs ./src ./src/software/common ./src/software/win32 ./contribs ./3rdparty)
 
+
 add_compile_definitions(
         TAZABASEDIR=\"${CMAKE_SOURCE_DIR}/contribs/TAZA/code\"
         NOMINMAX
@@ -41,7 +42,12 @@ target_compile_definitions(BORA PRIVATE
 )
 target_compile_options(BORA PRIVATE /FI${CMAKE_SOURCE_DIR}/../global/cpp/contribs/TypeDefinitions.h)
 
-file(GLOB_RECURSE BORA_LIBS ${CMAKE_SOURCE_DIR}/libs/Debug/*.lib)
+
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    file(GLOB_RECURSE BORA_LIBS ${CMAKE_SOURCE_DIR}/libs/Debug/*.lib)
+else()
+    file(GLOB_RECURSE BORA_LIBS ${CMAKE_SOURCE_DIR}/libs/Release/*.lib)
+endif()
 
 add_library(BORA_COMPAT SHARED src/library.def  ${BORA_SOURCES} ${BORA_CONTRIBS} ${BORA_TAZA} ${BORA_3RDPARTY})
 target_sources(BORA_COMPAT PRIVATE ${WAMR_RUNTIME_LIB_SOURCE})

@@ -30,11 +30,13 @@ option(BUILD_SHARED_LIBS "Build using shared libraries" OFF)
 
 # Unicode on Windows
 if(MSVC)
-    add_compile_definitions(UNICODE _UNICODE SK_DIRECT3D)
+    add_compile_definitions(UNICODE _UNICODE)
     add_compile_options(/utf-8)
 else()
     add_compile_options(-finput-charset=UTF-8 -fexec-charset=UTF-8)
 endif()
+
+add_compile_definitions(BORA_UI_SUPPORT BORA_USE_SPIRV WASM_ENABLE_DUMP_CALL_STACK=1)
 
 # WAMR Config options
 
@@ -49,7 +51,10 @@ set(WAMR_BUILD_LIB_PTHREAD 0)
 set(WAMR_BUILD_MINI_LOADER 0)
 set(WAMR_BUILD_SIMD 1)
 set(WAMR_BUILD_MEMORY64 1)
-set(WAMR_BUILD_DEBUG_INTERP 1) # todo: add more implementations
+set(WAMR_BUILD_DEBUG_INTERP 0) # todo: add more implementations
+#set(WAMR_ENABLE_INTERP_FRAME_TS 1)
+#set(WAMR_ENABLE_DUMP_CALL_STACK 1)
+
 
 if(WAMR_BUILD_DEBUG_INTERP)
     set(WAMR_BUILD_FAST_INTERP 0)

@@ -37,7 +37,7 @@ SET_LINEAR_MEMORY_SIZE(WASMMemoryInstance *memory, uint64 size)
     SHARED_MEMORY_UNLOCK(memory);
 }
 #else
-#define GET_LINEAR_MEMORY_SIZE(memory) memory->heapCommitted_size
+#define GET_LINEAR_MEMORY_SIZE(memory) memory->memory_data_size
 #define SET_LINEAR_MEMORY_SIZE(memory, size) memory->memory_data_size = size
 #endif
 

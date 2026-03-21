@@ -42,8 +42,16 @@ class bnGraphics;
 class bnUserWindow : public bnWindow
 {
 public:
+    bnUserWindow(const char* wasmID, const void* wasmUpdate, bnUserWindowConfig data) : wasmID(wasmID), wasmUpdate(wasmUpdate), configUser(std::move(data)), bnWindow(&configUser) {
+        isWASMInitalized = true;
+        construction();
+    }
+
     bnUserWindow(bnUserWindowConfig data) : configUser(std::move(data)), bnWindow(&configUser) {
-   
+        construction();
+    }
+
+    void construction() {
         if (!configuration->titleBarConfig) {
             configuration->titleBarConfig = new bnWindowTitlebarConfig();
         }
@@ -52,10 +60,6 @@ public:
 
         titleBar = std::make_unique<bnWindowTitlebar>(*this, *titleBarCOnfig);
         choice = D3D12;
-        //if (configUser.width == -1) {
-        //    configUser.width = GetSystemMetrics(SM_CXSCREEN); // full screen width
-        //    configUser.height = GetSystemMetrics(SM_CYSCREEN); // full screen height
-        //}
 
         create(this);
         bool maximize = false;
@@ -71,8 +75,8 @@ public:
         UpdateWindow(handle);
         init();
         ShowWindow(handle, SW_SHOW);
-
     }
+
     void run();
     //void close();
     void init() override;
@@ -90,6 +94,9 @@ public: // Dynamic Functions
     //void UpdateUserThread();
     void UpdateInputThread();
 public:
+    bool isWASMInitalized = false;
+    const char* wasmID = nullptr;
+    const void* wasmUpdate = nullptr;
     //bool updateAll = false;
     bool timeToRender = false;
     std::atomic<bool> predraw = false;
@@ -105,14 +112,6 @@ public:
     ResourceHandle<IViewPort> iTitleBar;
     ResourceHandle<IViewPort> iMain;
     bool frameSkipped = false;
-    //std::unique_ptr<bnWindowTitlebar> titleBar = nullptr;
-    //IDescriptorPool* dPool;
-    //IDescriptorSetLayout* dSetLayout;
-    //IDescriptorPool* dPoolUT;
-    //IDescriptorSetLayout* dSetLayoutUT;
-    //ICommandPool* copyTexturePool;
-    //ResourceHandle<IShader> vertexShader;
-    //IShader* pixelShader;
     bool messageBoxActive = false;
     ResourceHandle<IBuffer> stagingBuffer;
     ResourceHandle<ICommandPool> copyTexturePool;
@@ -134,22 +133,12 @@ public:
     ResourceHandle<IBuffer> utVB;
     ResourceHandle<IPipeline>* pipeline = nullptr;
     ResourceHandle<IDescriptorSet>* set = nullptr;
-   /* IBlendState* fadeBlend;
-    IRasterizerState* rast;
-    IDepthStencilState* depth;*/
      std::map<int, bool> firstFrames;
     std::atomic_bool justRendered = false;
     BITMAP memBitmap;
-    //  std::mutex cachedTexMutex;
     ITexture* pendingCachedRender = nullptr;
     ResourceHandle<ITexture> swpText;
     std::atomic<bool> renderReady{ false };
- /*   int updateIt = -1;
-    std::thread updateThread;
-    bool updateInProgress = false;
-    std::atomic<bool> frozenProcess{ false };
-    std::chrono::steady_clock::time_point updateStart;
-    int updateItNum;*/
     // Thread management
     std::thread updateThread;              // The persistent worker thread
     std::mutex updateMutex;                // Synchronization for shared state

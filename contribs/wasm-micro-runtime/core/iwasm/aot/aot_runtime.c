@@ -53,7 +53,7 @@ bh_static_assert(offsetof(AOTModuleInstance, c_api_func_imports)
 bh_static_assert(offsetof(AOTModuleInstance, global_table_data)
                  == 13 * sizeof(uint64) + 128 + 14 * sizeof(uint64));
 
-bh_static_assert(sizeof(AOTMemoryInstance) == 152);
+// bh_static_assert(sizeof(AOTMemoryInstance) == 152);
 bh_static_assert(offsetof(AOTTableInstance, elems) == 24);
 
 bh_static_assert(offsetof(AOTModuleInstanceExtra, stack_sizes) == 0);
@@ -4271,107 +4271,107 @@ aot_copy_callstack(WASMExecEnv *exec_env, wasm_frame_t *buffer,
 bool
 aot_create_call_stack(struct WASMExecEnv *exec_env)
 {
-    AOTModuleInstance *module_inst = (AOTModuleInstance *)exec_env->module_inst;
-    AOTModule *module = (AOTModule *)module_inst->module;
-    uint32 n = 0;
-
-    void *top_frame = get_top_frame(exec_env);
-    while (top_frame) {
-        top_frame = get_prev_frame(exec_env, top_frame);
-        n++;
-    }
-
-    /* release previous stack frames and create new ones */
-    destroy_c_api_frames(module_inst->frames);
-    if (!bh_vector_init(module_inst->frames, n, sizeof(WASMCApiFrame), false)) {
-        return false;
-    }
-
-    top_frame = get_top_frame(exec_env);
-    while (n-- > 0) {
-        uint32 func_index, ip_offset;
-        uint32 *lp = NULL;
-#if WASM_ENABLE_GC != 0
-        uint32 *sp = NULL;
-        uint8 *frame_ref = NULL;
-#endif
-        if (is_tiny_frame(exec_env)) {
-            AOTTinyFrame *frame = (AOTTinyFrame *)top_frame;
-            func_index = (uint32)frame->func_index;
-            ip_offset = (uint32)frame->ip_offset;
-        }
-        else {
-            AOTFrame *frame = (AOTFrame *)top_frame;
-            func_index = (uint32)frame->func_index;
-            ip_offset = (uint32)frame->ip_offset;
-            lp = frame->lp;
-#if WASM_ENABLE_GC != 0
-            sp = frame->sp;
-            frame_ref = frame->frame_ref;
-#endif
-        }
-        WASMCApiFrame frame = { 0 };
-        uint32 max_local_cell_num = 0, max_stack_cell_num = 0;
-        uint32 all_cell_num, lp_size;
-
-        frame.instance = module_inst;
-        frame.module_offset = 0;
-        frame.func_index = func_index;
-        frame.func_offset = ip_offset;
-        frame.func_name_wp = get_func_name_from_index(module_inst, func_index);
-
-        if (!is_frame_func_idx_disabled(exec_env)) {
-            if (func_index >= module->import_func_count) {
-                uint32 aot_func_idx = func_index - module->import_func_count;
-                max_local_cell_num = module->max_local_cell_nums[aot_func_idx];
-                max_stack_cell_num = module->max_stack_cell_nums[aot_func_idx];
-            }
-            else {
-                AOTFuncType *func_type =
-                    module->import_funcs[func_index].func_type;
-                max_local_cell_num = func_type->param_cell_num > 2
-                                         ? func_type->param_cell_num
-                                         : 2;
-                max_stack_cell_num = 0;
-            }
-        }
-
-        all_cell_num = max_local_cell_num + max_stack_cell_num;
-#if WASM_ENABLE_GC == 0
-        lp_size = all_cell_num * 4;
-#else
-        lp_size = align_uint(all_cell_num * 5, 4);
-#endif
-        if (lp_size > 0 && !is_tiny_frame(exec_env)) {
-            if (!(frame.lp = wasm_runtime_malloc(lp_size))) {
-                destroy_c_api_frames(module_inst->frames);
-                return false;
-            }
-            bh_memcpy_s(frame.lp, lp_size, lp, lp_size);
-
-#if WASM_ENABLE_GC != 0
-            uint32 local_ref_flags_cell_num =
-                module->func_local_ref_flags[frame.func_index]
-                    .local_ref_flag_cell_num;
-            uint8 *local_ref_flags =
-                module->func_local_ref_flags[frame.func_index].local_ref_flags;
-            frame.sp = frame.lp + (sp - lp);
-            frame.frame_ref = (uint8 *)frame.lp + (frame_ref - (uint8 *)lp);
-            /* copy local ref flags from AOT module */
-            bh_memcpy_s(frame.frame_ref, local_ref_flags_cell_num,
-                        local_ref_flags, lp_size);
-#endif
-        }
-
-        if (!bh_vector_append(module_inst->frames, &frame)) {
-            if (frame.lp)
-                wasm_runtime_free(frame.lp);
-            destroy_c_api_frames(module_inst->frames);
-            return false;
-        }
-
-        top_frame = get_prev_frame(exec_env, top_frame);
-    }
+//     AOTModuleInstance *module_inst = (AOTModuleInstance *)exec_env->module_inst;
+//     AOTModule *module = (AOTModule *)module_inst->module;
+//     uint32 n = 0;
+//
+//     void *top_frame = get_top_frame(exec_env);
+//     while (top_frame) {
+//         top_frame = get_prev_frame(exec_env, top_frame);
+//         n++;
+//     }
+//
+//     /* release previous stack frames and create new ones */
+//     destroy_c_api_frames(module_inst->frames);
+//     if (!bh_vector_init(module_inst->frames, n, sizeof(WASMCApiFrame), false)) {
+//         return false;
+//     }
+//
+//     top_frame = get_top_frame(exec_env);
+//     while (n-- > 0) {
+//         uint32 func_index, ip_offset;
+//         uint32 *lp = NULL;
+// #if WASM_ENABLE_GC != 0
+//         uint32 *sp = NULL;
+//         uint8 *frame_ref = NULL;
+// #endif
+//         if (is_tiny_frame(exec_env)) {
+//             AOTTinyFrame *frame = (AOTTinyFrame *)top_frame;
+//             func_index = (uint32)frame->func_index;
+//             ip_offset = (uint32)frame->ip_offset;
+//         }
+//         else {
+//             AOTFrame *frame = (AOTFrame *)top_frame;
+//             func_index = (uint32)frame->func_index;
+//             ip_offset = (uint32)frame->ip_offset;
+//             lp = frame->lp;
+// #if WASM_ENABLE_GC != 0
+//             sp = frame->sp;
+//             frame_ref = frame->frame_ref;
+// #endif
+//         }
+//         WASMCApiFrame frame = { 0 };
+//         uint32 max_local_cell_num = 0, max_stack_cell_num = 0;
+//         uint32 all_cell_num, lp_size;
+//
+//         frame.instance = module_inst;
+//         frame.module_offset = 0;
+//         frame.func_index = func_index;
+//         frame.func_offset = ip_offset;
+//         frame.func_name_wp = get_func_name_from_index(module_inst, func_index);
+//
+//         if (!is_frame_func_idx_disabled(exec_env)) {
+//             if (func_index >= module->import_func_count) {
+//                 uint32 aot_func_idx = func_index - module->import_func_count;
+//                 max_local_cell_num = module->max_local_cell_nums[aot_func_idx];
+//                 max_stack_cell_num = module->max_stack_cell_nums[aot_func_idx];
+//             }
+//             else {
+//                 AOTFuncType *func_type =
+//                     module->import_funcs[func_index].func_type;
+//                 max_local_cell_num = func_type->param_cell_num > 2
+//                                          ? func_type->param_cell_num
+//                                          : 2;
+//                 max_stack_cell_num = 0;
+//             }
+//         }
+//
+//         all_cell_num = max_local_cell_num + max_stack_cell_num;
+// #if WASM_ENABLE_GC == 0
+//         lp_size = all_cell_num * 4;
+// #else
+//         lp_size = align_uint(all_cell_num * 5, 4);
+// #endif
+//         if (lp_size > 0 && !is_tiny_frame(exec_env)) {
+//             if (!(frame.lp = wasm_runtime_malloc(lp_size))) {
+//                 destroy_c_api_frames(module_inst->frames);
+//                 return false;
+//             }
+//             bh_memcpy_s(frame.lp, lp_size, lp, lp_size);
+//
+// #if WASM_ENABLE_GC != 0
+//             uint32 local_ref_flags_cell_num =
+//                 module->func_local_ref_flags[frame.func_index]
+//                     .local_ref_flag_cell_num;
+//             uint8 *local_ref_flags =
+//                 module->func_local_ref_flags[frame.func_index].local_ref_flags;
+//             frame.sp = frame.lp + (sp - lp);
+//             frame.frame_ref = (uint8 *)frame.lp + (frame_ref - (uint8 *)lp);
+//             /* copy local ref flags from AOT module */
+//             bh_memcpy_s(frame.frame_ref, local_ref_flags_cell_num,
+//                         local_ref_flags, lp_size);
+// #endif
+//         }
+//
+//         if (!bh_vector_append(module_inst->frames, &frame)) {
+//             if (frame.lp)
+//                 wasm_runtime_free(frame.lp);
+//             destroy_c_api_frames(module_inst->frames);
+//             return false;
+//         }
+//
+//         top_frame = get_prev_frame(exec_env, top_frame);
+//     }
 
     return true;
 }

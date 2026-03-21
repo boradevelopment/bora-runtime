@@ -915,7 +915,7 @@ WindowCallbackCodes bnMessageBox::windowCallback(WindowEvent* event)
         return WindowCallbackCodes::DEFAULT;
     }
         case WindowEventType::NonClientHitTest: {
-        i64Pointer hit = GetDefaultProcedure(event->originalMessage, event->wordParameter, event->longParameter);
+        u64 hit = GetDefaultProcedure(event->originalMessage, event->wordParameter, event->longParameter);
         switch (hit) {
             case HTNOWHERE:
             case HTRIGHT:

@@ -950,7 +950,7 @@ main(int argc, char *argv[]){
 
     HostCommandManager::AddOnUpdateHook([wasm_module_inst](u64 handle, const HostCommandListRecord& record) {
         std::cout << "UPDATE HOOK DETECTED :" << handle << std::endl;
-    CommandRegistry::ExecuteCommandBuffer(nullptr, (u8*)wasm_runtime_addr_app_to_native(wasm_module_inst, record.wasmPtr), record.size);
+    CommandRegistry::ExecuteCommandBuffer(wasm_module_inst, nullptr, (u8*)wasm_runtime_addr_app_to_native(wasm_module_inst, record.wasmPtr), record.size);
 });
 
 
@@ -962,28 +962,34 @@ main(int argc, char *argv[]){
 
     auto exec_env = wasm_runtime_create_exec_env(wasm_module_inst, stack_size);
 
-    {
-        uint32_t result_ptr[2]; // I guess your return value, plus any other arguments and a extra number for stack
-        result_ptr[0] = 0;
+    auto versionPointer = WasmTools::RequestExportedMethod<u32*>(exec_env, "get_bora_sdk_version");
+    auto version = WasmTools::fromWASM<const char*>(exec_env, (u64)versionPointer);
+    printf("Running BORA SDK Version: %s\n", version);
 
-        if (!wasm_runtime_call_wasm(exec_env, func, 1, result_ptr)) {
-            printf("Call failed: %s\n", wasm_runtime_get_exception(wasm_module_inst));
-            return 1;
-        }
-        const char *result_str = (const char *) wasm_runtime_addr_app_to_native(wasm_module_inst, result_ptr[0]);
-        if (!result_str) {
-            printf("Failed to translate address\n");
-            return 1;
-        }
+    // {
+    //     uint32_t result_ptr[2]; // I guess your return value, plus any other arguments and a extra number for stack
+    //     result_ptr[0] = 0;
+    //
+    //     if (!wasm_runtime_call_wasm(exec_env, func, 1, result_ptr)) {
+    //         printf("Call failed: %s\n", wasm_runtime_get_exception(wasm_module_inst));
+    //         return 1;
+    //     }
+    //     const char *result_str = (const char *) wasm_runtime_addr_app_to_native(wasm_module_inst, result_ptr[0]);
+    //     if (!result_str) {
+    //         printf("Failed to translate address\n");
+    //         return 1;
+    //     }
+    //
+    //
+    //     printf("Running BORA SDK Version: %s\n", result_str);
+    // }
 
-
-        printf("Running BORA SDK Version: %s\n", result_str);
-    }
-
+#ifdef WAMR_BUILD_DEBUG_INTERP
     if(AppParam::has("debug")) {
         uint32_t debug_port = wasm_runtime_start_debug_instance(exec_env);
         printf("Debugging at %d\n", debug_port);
     }
+    #endif
 
 
 

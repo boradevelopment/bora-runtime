@@ -188,7 +188,7 @@ WindowCallbackCodes bnUserWindow::windowCallback(WindowEvent* event)
         return WindowCallbackCodes::DEFAULT;
     }
         case WindowEventType::NonClientHitTest: {
-        i64Pointer hit = GetDefaultProcedure(event->originalMessage, event->wordParameter, event->longParameter);
+        i64 hit = GetDefaultProcedure(event->originalMessage, event->wordParameter, event->longParameter);
         switch (hit) {
         case HTNOWHERE:
         case HTRIGHT:
@@ -1166,7 +1166,10 @@ void bnUserWindow::UserThreadLoop()
 
         updateInProgress = true;
         predraw = false;
-        configUser.update(this, configUser.userObject, WindowUpdateMessages::ON_UPDATE, isRenderable, 0);
+        if (isWASMInitalized) {
+            if (!wasmUpdate) continue;
+        WasmTools::CallByIndex<void>(WasmTools::getLastExecutionEnvironment(), (u32)wasmUpdate, WasmTools::toWASM(WasmTools::getLastExecutionEnvironment(), (void*)wasmID), (u64)nullptr, WasmTools::toWASM(WasmTools::getLastExecutionEnvironment(), (void*)WindowUpdateMessages::ON_UPDATE), WasmTools::toWASM(WasmTools::getLastExecutionEnvironment(), (void*)isRenderable), (u64)0);
+        } else configUser.update(this, configUser.userObject, WindowUpdateMessages::ON_UPDATE, isRenderable, 0);
         predraw = true;
         frozenProcess = false;
         updateInProgress = false;

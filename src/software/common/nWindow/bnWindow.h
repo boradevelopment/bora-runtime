@@ -89,7 +89,7 @@ public: // Functions & Structs
         }
 #endif
     }
-    i64Pointer GetDefaultProcedure(u8 message, u64Pointer w_param, i64Pointer l_param) {
+    i64 GetDefaultProcedure(u8 message, u64 w_param, u64 l_param) {
 #ifdef WIN32
         return DefWindowProc(handle, message, w_param, l_param);
 #endif

@@ -204,7 +204,6 @@ wasm_resolve_import_func(const WASMModule *module, WASMFunctionImport *function)
 static void *
 runtime_malloc(uint64 size, char *error_buf, uint32 error_buf_size)
 {
-
     void *mem;
 
     if (size >= UINT32_MAX || !(mem = wasm_runtime_malloc((uint32)size))) {
@@ -276,13 +275,13 @@ memories_deinstantiate(WASMModuleInstance *module_inst,
 static WASMMemoryInstance *
 memory_instantiate(WASMModuleInstance *module_inst, WASMModuleInstance *parent,
                    WASMMemoryInstance *memory, uint32 memory_idx,
-                   uint32 num_bytes_per_page, uint32 init_page_count,
-                   uint32 max_page_count, uint32 heap_size, uint32 flags,
+                   uint64 num_bytes_per_page, uint64 init_page_count,
+                   uint64 max_page_count, uint32 heap_size, uint32 flags,
                    char *error_buf, uint32 error_buf_size)
 {
     WASMModule *module = module_inst->module;
-    uint32 inc_page_count, global_idx, default_max_page;
-    uint32 bytes_of_last_page, bytes_to_page_end;
+    uint64 inc_page_count, global_idx, default_max_page;
+    uint64 bytes_of_last_page, bytes_to_page_end;
     uint64 aux_heap_base,
         heap_offset = (uint64)num_bytes_per_page * init_page_count;
     uint64 memory_data_size, max_memory_data_size;
@@ -312,7 +311,6 @@ memory_instantiate(WASMModuleInstance *module_inst, WASMModuleInstance *parent,
 #endif
     default_max_page =
         memory->is_memory64 ? DEFAULT_MEM64_MAX_PAGES : DEFAULT_MAX_PAGES;
-
 
     /* The app heap should be in the default memory */
     if (memory_idx == 0) {
@@ -408,7 +406,7 @@ memory_instantiate(WASMModuleInstance *module_inst, WASMModuleInstance *parent,
                     heap_size -= 1 * BH_KB;
             }
             init_page_count += inc_page_count;
-            max_page_count += inc_page_count;
+            // max_page_count += inc_page_count; - already at maximum
             if (init_page_count > default_max_page) {
                 set_error_buf(error_buf, error_buf_size,
                               "failed to insert app heap into linear memory, "
@@ -416,8 +414,7 @@ memory_instantiate(WASMModuleInstance *module_inst, WASMModuleInstance *parent,
                 return NULL;
             }
 
-            if (max_page_count > default_max_page)
-                max_page_count = default_max_page;
+            // max_page_count = default_max_page;
         }
     }
 
@@ -429,13 +426,14 @@ memory_instantiate(WASMModuleInstance *module_inst, WASMModuleInstance *parent,
                     heap_size);
 
     max_memory_data_size = (uint64)num_bytes_per_page * max_page_count;
+    uint64 max_size = GET_MAX_LINEAR_MEMORY_SIZE(memory->is_memory64);
     bh_assert(max_memory_data_size
-              <= GET_MAX_LINEAR_MEMORY_SIZE(memory->is_memory64));
+              <= max_size);
     (void)max_memory_data_size;
 
     bh_assert(memory != NULL);
 
-    if (uasm_allocate_dynmemory(&memory->memory_data, is_shared_memory,
+    if (wasm_allocate_linear_memory(&memory->memory_data, is_shared_memory,
                                     memory->is_memory64, num_bytes_per_page,
                                     init_page_count, max_page_count,
                                     &memory_data_size)
@@ -459,23 +457,18 @@ memory_instantiate(WASMModuleInstance *module_inst, WASMModuleInstance *parent,
 
     /* Initialize heap */
     if (memory_idx == 0 && heap_size > 0) {
-       // uint32 heap_struct_size = mem_allocator_get_heap_struct_size();
-        memory->heap_data = os_reserve_memory(256ULL * 1024ULL * 1024ULL * 1024ULL); // 256 GB Memory Limit
-        if(!memory->heap_data){
-            LOG_ERROR("Welp no heap");
-        }
-        memory->heapCommitted_size = 0;
+       uint32 heap_struct_size = mem_allocator_get_heap_struct_size();
 
-//        if (!(memory->heap_handle = runtime_malloc(
-//                  1, error_buf, error_buf_size))) { //(uint64)heap_struct_size
-//            goto fail1;
-//        }
-//        if (!mem_allocator_create_with_struct_and_pool(
-//                memory->heap_handle, 1, memory->heap_data,
-//                heap_size)) {
-//            set_error_buf(error_buf, error_buf_size, "init app heap failed");
-//            goto fail2;
-//        }
+       if (!((memory->heap_handle = runtime_malloc(
+                  (uint64)heap_struct_size, error_buf, error_buf_size)))) { //
+           goto fail1;
+       }
+       if (!mem_allocator_create_with_struct_and_pool(
+               memory->heap_handle, heap_struct_size, memory->heap_data,
+               heap_size)) {
+           set_error_buf(error_buf, error_buf_size, "init app heap failed");
+           goto fail2;
+       }
     }
 
     if (memory_data_size > 0) {
@@ -571,12 +564,14 @@ memories_instantiate(const WASMModule *module, WASMModuleInstance *module_inst,
 
     /* instantiate memories from memory section */
     for (i = 0; i < module->memory_count; i++, memory++) {
-        uint32 max_page_count = wasm_runtime_get_max_mem(
-            max_memory_pages, module->memories[i].init_page_count,
-            module->memories[i].max_page_count);
+        // Max Page Counts have been patched to not read the import data because WASM adds a 16GB limit
+        // to this values, however WASM was designed for the web,
+        // which justifies the limit. But with BORA, it will not do.
+        uint64 max_page_count = module->memories[i].flags & MEMORY64_FLAG ? DEFAULT_MEM64_MAX_PAGES : DEFAULT_MAX_PAGES;
+
         if (!(memories[mem_index] = memory_instantiate(
                   module_inst, parent, memory, mem_index,
-                  module->memories[i].num_bytes_per_page,
+                  module->memories[i].flags & MEMORY64_FLAG  ? (uint64)64 * (uint64)BH_KB : module->memories[i].num_bytes_per_page,
                   module->memories[i].init_page_count, max_page_count,
                   heap_size, module->memories[i].flags, error_buf,
                   error_buf_size))) {
@@ -3742,197 +3737,6 @@ size_t align_to_page(size_t x) {
 }
 
 
-bool
-try_grow_memory(WASMMemoryInstance *memory, uint32 new_commit_size)
-{
-
-    new_commit_size += sizeof(BlockHeader);
-
-#if WIN32
-        void* res = VirtualAlloc(memory->heap_data + memory->heapCommitted_size,
-                                 new_commit_size - memory->heapCommitted_size,
-                  MEM_COMMIT, PAGE_READWRITE);
-        if (!res) {
-            // Allocation failed: out of memory
-            DWORD err = GetLastError();
-            return false;
-        }
-#elif __linux__ || __APPLE__
-    if (mprotect(memory->heap_data + memory->heapCommitted_size, new_commit_size - memory->heapCommitted_size, PROT_READ | PROT_WRITE) != 0) {
-        // Failed to commit memory
-        return false;
-    }
-#endif
-        mem_allocator_extend_heap(memory,
-                                  memory->heap_data + memory->heapCommitted_size,
-                                  new_commit_size - memory->heapCommitted_size);
-    }
-
-
-void* mem_allocator_heap_malloc(WASMMemoryInstance* heap, uint64_t size) {
-    FreeBlock* prev = NULL;
-    FreeBlock* curr = heap->free_list;
-
-    // Align size if needed
-    size = align_up(size, sizeof(void*)); // align to pointer size
-
-    size_t total_needed = size + sizeof(BlockHeader);
-
-    while (curr) {
-        if (curr->size >= total_needed) {
-            if (curr->size >= total_needed + sizeof(FreeBlock)) {
-                // Split
-                FreeBlock* next_block = (FreeBlock*)((uint8_t*)curr + total_needed);
-                next_block->size = curr->size - total_needed;
-                next_block->next = curr->next;
-
-                if (prev) prev->next = next_block;
-                else heap->free_list = next_block;
-            } else {
-                // Use entire block
-                total_needed = curr->size; // actual allocated size
-                if (prev) prev->next = curr->next;
-                else heap->free_list = curr->next;
-            }
-
-            heap->heapFreeSize -= total_needed;
-
-            BlockHeader* header = (BlockHeader*)curr;
-            header->size = total_needed;
-            return (void*)(header + 1);
-        }
-
-        prev = curr;
-        curr = curr->next;
-    }
-    return NULL;
-}
-
-
-bool mem_allocator_heap_free(WASMMemoryInstance* heap, void* ptr, bool isdeleted) {
-    if (!ptr) return false; // must check before dereferencing
-    BlockHeader *header = ((BlockHeader *) ptr) - 1;
-
-    // I believe that WASM can possibly double free for some odd reason. This exception prone code should prevent this from happening and allow the application to die peacefully.
-    // If i find a better way of optimizing this, this is going.
-#if WIN32
-    __try
-    {
-        header->size++;
-        header->size--;
-    }
-    __except (EXCEPTION_EXECUTE_HANDLER) {
-        return false;
-    }
-#endif
-
-    uint64_t size = header->size + sizeof(BlockHeader);
-    if (size == 0)
-        return false;
-
-    if (isdeleted) {
-        // Fully deallocate and don't reuse
-        printf("Memory is being deleted | %llu | %p\n", header->size, ptr);
-        heap->heapCommitted_size -= header->size;
-        os_decommit_memory(ptr, header->size);
-        heap->free_list = NULL;
-        ptr = NULL;
-        return true;
-    }
-
-    FreeBlock* block = (FreeBlock*)header;
-    block->size = size;
-    block->next = NULL;
-
-    FreeBlock* prev = NULL;
-    FreeBlock* curr = heap->free_list;
-
-    // Insert block sorted by address
-    while (curr && curr < block) {
-        prev = curr;
-        curr = curr->next;
-    }
-
-    block->next = curr;
-    if (prev)
-        prev->next = block;
-    else
-        heap->free_list = block;
-
-    // Merge with next block if adjacent
-    if (curr && ((uint8_t*)block + block->size == (uint8_t*)curr)) {
-        block->size += curr->size;
-        block->next = curr->next;
-    }
-
-    // Merge with previous block if adjacent
-    if (prev && ((uint8_t*)prev + prev->size == (uint8_t*)block)) {
-        prev->size += block->size;
-        prev->next = block->next;
-    }
-
-    heap->heapFreeSize += size;
-    if(heap->heapCommitted_size < header->size) heap->heapCommitted_size = 0;
-    else heap->heapCommitted_size -= header->size;
-    return true;
-}
-
-
-bool mem_allocator_extend_heap(WASMMemoryInstance* heap, uint8_t* new_pool, uint64 new_size) {
-    if (new_size == 0)
-        return false;
-
-    // Create a new free block in the newly committed memory
-    FreeBlock* new_block = (FreeBlock*)new_pool;
-    new_block->size = new_size;
-    new_block->next = NULL;
-
-
-    if (!heap->free_list) {
-        // First free block in the heap
-        heap->free_list = new_block;
-
-        // Update bookkeeping
-        heap->heapCommitted_size += new_size;
-        heap->heapFreeSize += new_size;
-        return true;
-    }
-
-    // Find correct place in free list (sorted by address for merging)
-    FreeBlock* prev = NULL;
-    FreeBlock* curr = heap->free_list;
-
-    while (curr && curr < new_block) {
-        prev = curr;
-        curr = curr->next;
-    }
-
-    // Insert new block between prev and curr
-    new_block->next = curr;
-    if (prev)
-        prev->next = new_block;
-    else
-        heap->free_list = new_block;
-
-    // Try to merge with next block if adjacent
-    if (curr && ((uint8_t*)new_block + new_block->size == (uint8_t*)curr)) {
-        new_block->size += curr->size;
-        new_block->next = curr->next;
-    }
-
-    // Try to merge with previous block if adjacent
-    if (prev && ((uint8_t*)prev + prev->size == (uint8_t*)new_block)) {
-        prev->size += new_block->size;
-        prev->next = new_block->next;
-    }
-
-    // Update bookkeeping
-    heap->heapCommitted_size += new_size;
-    heap->heapFreeSize += new_size;
-
-    return true;
-}
-
 uint64
 wasm_module_malloc_internal(WASMModuleInstance *module_inst,
                             WASMExecEnv *exec_env, uint64 size,
@@ -3941,26 +3745,14 @@ wasm_module_malloc_internal(WASMModuleInstance *module_inst,
     WASMMemoryInstance *memory = wasm_get_default_memory(module_inst);
     uint8 *addr = NULL;
     uint64 offset = 0;
-
-    uint64 new_commit_size = align_up((uint64_t) (memory->heapCommitted_size + size), get_page_size());
-
-    if(new_commit_size > memory->heapCommitted_size){
-        try_grow_memory(memory, new_commit_size);
-    }
-
     /* TODO: Memory64 size check based on memory idx type */
-    //bh_assert(size <= UINT32_MAX);
+    bh_assert(size <= UINT64_MAX);
 
     if (!memory) {
         wasm_set_exception(module_inst, "uninitialized memory");
         return 0;
     }
 
-    if (memory->heapCommitted_size > 0) {
-        addr = mem_allocator_heap_malloc(memory, size);
-        uint64 i = (uint64)(addr - memory->heap_data);
-        if(addr) return i;
-    }
     else if (module_inst->e->malloc_function && module_inst->e->free_function) {
         if (!execute_malloc_function(
                 module_inst, exec_env, module_inst->e->malloc_function,
@@ -3974,12 +3766,6 @@ wasm_module_malloc_internal(WASMModuleInstance *module_inst,
     }
 
     if (!addr) {
-//        if (try_grow_memory(memory, size)) {
-//            addr = mem_allocator_malloc(memory->heap_handle, size);
-//            if (addr)
-//                return (uint64)(addr - memory->memory_data);
-//        }
-
         if (memory->heap_handle
             && mem_allocator_is_heap_corrupted(memory->heap_handle)) {
             wasm_runtime_show_app_heap_corrupted_prompt();
@@ -4062,11 +3848,6 @@ wasm_module_free_internal(WASMModuleInstance *module_inst,
         SHARED_MEMORY_LOCK(memory);
         memory_data_end = memory->memory_data_end;
         SHARED_MEMORY_UNLOCK(memory);
-
-        if(memory->heapCommitted_size > 0){
-            mem_allocator_heap_free(memory, addr, delete);
-            return;
-        }
 
         if (memory->heap_handle && memory->heap_data <= addr
             && addr < memory->heap_data_end) {

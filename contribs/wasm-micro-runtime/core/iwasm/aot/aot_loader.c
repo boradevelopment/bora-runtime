@@ -605,7 +605,7 @@ load_target_info_section(const uint8 *buf, const uint8 *buf_end,
     }
 
 #if WASM_ENABLE_DUMP_CALL_STACK != 0
-    module->feature_flags = target_info.feature_flags;
+    // module->feature_flags = target_info.feature_flags;
 #endif
 
     /* Finally, check feature flags */

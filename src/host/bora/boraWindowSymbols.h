@@ -1,26 +1,38 @@
-// Apart of the BORA Runtime Source which uses the TAOSU License
-// Check LICENSE.md for more information regarding the BORA license.
+#include "hostSymbolTemplate.hpp"
+#include "nWindow/bnUserWindow.h"
 
-/* ? [Common or PDS (Platform Dependent Source)]
+class BoraWindowSymbols : public HostSymbolTemplate {
+public:
+ static inline std::unordered_map<int, bnUserWindow*> windows;
+ const char *get_namespace() const override {
+  return "bora::window";
+ }
+ static void windowCommandHookInit();
+ static u64 createWindow(wasm_exec_env_t exec_env, u64 configuration_ptr, u64 idk);
+ static u64 runWindow(wasm_exec_env_t exec_env, u64 window_ptr);
+ static u64 closeWindow(wasm_exec_env_t exec_env, u64 window_ptr);
+ std::vector<NativeSymbol> symbols = {
+  {
+   "create",
+   (void*)createWindow,
+   "(II)I",
+   nullptr
+},
+{
+ "run",
+ (void*)runWindow,
+ "(I)",
+ nullptr
+},
+{
+ "close",
+ (void*)closeWindow,
+ "(I)",
+ nullptr
+}
+ };
 
- * FileName: boraWindowSymbols.h
- * Title: ?
- * Author: ?
- * Purpose: ?
-
- * Compatibility: ?
-
- * Updates - ?
- * Known issues - ?
- */
-
-#ifndef BORA_BORAWINDOWSYMBOLS_H
-#define BORA_BORAWINDOWSYMBOLS_H
-
-
-class boraWindowSymbols {
-
+ const std::vector<NativeSymbol>& get_symbols() const override {
+  return symbols;
+ }
 };
-
-
-#endif //BORA_BORAWINDOWSYMBOLS_H

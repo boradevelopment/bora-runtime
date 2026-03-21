@@ -14,11 +14,12 @@
 
 struct HostCommandListRecord {
     std::string name;
+    std::string category;
     u64 wasmPtr;
     u64 size;
 };
 
-using OnInitializeHook = std::function<void(u64 handle, const std::string& name)>;
+using OnInitializeHook = std::function<void(u64 handle, const HostCommandListRecord& record)>;
 using OnUpdateHook = std::function<void(u64 handle, const HostCommandListRecord& record)>;
 
 class HostCommandManager {
@@ -34,13 +35,14 @@ public:
      static void AddOnUpdateHook(OnUpdateHook hook) { m_updateHooks.push_back(hook); }
 
     // Called by Wasm IMPORT "initialize"
-   static u64 Initialize(wasm_exec_env_t exec_env, u64 name_ptr) {
+   static u64 Initialize(wasm_exec_env_t exec_env, u64 category_ptr, u64 name_ptr) {
          // Get the module instance from the execution environment
          const char* name = WasmTools::fromWASM<char*>(exec_env, name_ptr);
+         const char* category = WasmTools::fromWASM<char*>(exec_env, category_ptr);
         u64 handle = m_nextHandle++;
-        m_activeLists[handle] = { name, 0, 0 };
-        for (auto& hook : m_initHooks) {
-            hook(handle, name);
+        m_activeLists[handle] = { name, category, 0, 0 };
+        for (auto& hook : m_initHooks) {    
+            hook(handle, m_activeLists[handle]);
         }
         return handle;
     }
@@ -71,7 +73,7 @@ public:
         {
             "initialize",
             (void*)HostCommandManager::Initialize,
-            "(I)I",
+            "(II)I",
             nullptr
             },
 {

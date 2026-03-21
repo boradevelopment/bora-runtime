@@ -110,10 +110,10 @@ enum class WindowCallbackCodes {
 struct WindowEvent {
     WindowEventType type = WindowEventType::None;
     u8 originalMessage;
-    u64Pointer wordParameter;
-    i64Pointer longParameter;
+    u64 wordParameter;
+    i64 longParameter;
 
-    i64Pointer customResult;
+    i64 customResult;
     // Keyboard
     int key       = 0;      // Engine keycode
     int scancode  = 0;

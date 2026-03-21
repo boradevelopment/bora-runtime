@@ -9,14 +9,17 @@
 #pragma once
 #include <iostream>
 #include <ostream>
+
+#include "wasm_export.h"
 #include "nCommon/CommandListCategories.h"
 #include "nCommon/Hashing.h"
+#include "host/WasmTools.h"
 
 struct ICommand
 {
 public:
     virtual ~ICommand() = default;
-    virtual void ExecuteStatic(void* context) = 0;
+    virtual void ExecuteStatic(void* context, wasm_module_inst_t wasmModule = nullptr) = 0;
 };
 
 class CommandRegistry
@@ -24,9 +27,9 @@ class CommandRegistry
 public:
 
     static
-void ExecuteCommandBuffer(void* context, const uint8_t* data, size_t size)
+void ExecuteCommandBuffer(wasm_module_inst_t moduleInstance, void* context, const uint8_t* data, u64 size)
     {
-        size_t offset = 0;
+        u64 offset = 0;
 
         while (offset < size)
         {
@@ -43,7 +46,7 @@ void ExecuteCommandBuffer(void* context, const uint8_t* data, size_t size)
             ICommand* cmd = Instance().Create(header.nameHash, payload);
             if (cmd)
             {
-                cmd->ExecuteStatic(context);
+                cmd->ExecuteStatic(context, moduleInstance);
                 delete cmd;
             }
             else
@@ -129,9 +132,19 @@ struct TestCommand : public ICommand
     {
     }
 
-    void ExecuteStatic(void* context) override
+    void ExecuteStatic(void* context, wasm_module_inst_t moduleInstance) override
     {
-        std::cout << "Test command executed! Value:" << data.value << std::endl;
+        if (!moduleInstance) return;
+        data.text = WasmTools::fromWASM<const char*>(moduleInstance, (u64)data.text);
+        // data.ints = WasmTools::fromWASM<int*>(moduleInstance, (u64)data.ints);
+        std::cout << "Test command executed! Value:" << data.value << " | Text = "<< data.text << std::endl;
+        // for (int* p = data.ints; p < (data.ints + data.intsSize); ++p) {
+        //     int val = *p;
+        //     std::cout << "Int: " << val << std::endl;
+        // }
+        // std::cout << data.ints[0] << std::endl;
+        // std::cout << data.ints[1] << std::endl;
+
     }
 };
 
