@@ -3,18 +3,18 @@
 #include "nGraphics/bnGraphics.h"
 #include "Utils.h"
 #include "bnWindowTitlebar.h"
-#pragma comment(lib, "user32.lib")
-#pragma comment(lib, "gdi32.lib")
-#pragma comment(lib, "uxtheme.lib")
-#pragma comment(lib, "gdiplus.lib")
-#pragma comment(lib, "dwmapi.lib")
-#pragma comment (lib, "Shlwapi.lib")
-#pragma comment (lib, "Comctl32.lib")
-#pragma comment(lib, "d3d11.lib")
-#pragma comment(lib, "d3dcompiler.lib")
-#pragma comment(lib, "shlwapi.lib")
-#pragma comment(lib, "Ole32.lib")
-#pragma comment(lib, "Propsys.lib")
+//#pragma comment(lib, "user32.lib")
+//#pragma comment(lib, "gdi32.lib")
+//#pragma comment(lib, "uxtheme.lib")
+//#pragma comment(lib, "gdiplus.lib")
+//#pragma comment(lib, "dwmapi.lib")
+//#pragma comment (lib, "Shlwapi.lib")
+//#pragma comment (lib, "Comctl32.lib")
+//#pragma comment(lib, "d3d11.lib")
+//#pragma comment(lib, "d3dcompiler.lib")
+//#pragma comment(lib, "shlwapi.lib")
+//#pragma comment(lib, "Ole32.lib")
+//#pragma comment(lib, "Propsys.lib")
 
 
 bnWindow::~bnWindow()

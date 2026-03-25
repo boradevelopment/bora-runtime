@@ -1,6 +1,8 @@
 // Apart of the BORA Runtime Source which uses the TAOSU License
 // Check LICENSE.md for more information regarding the BORA license.
 #ifdef WRAPPER
+#include "VersionLoader.h"
+
 // #include "TAZA.h"
 // #include <stdlib.h>
 // #include <string.h>
@@ -12,41 +14,23 @@
 // #include "SysImageMgr.h"
 // #include "../software/win32/rcscle.h"
 
-bool CopyFileWin32(const std::wstring& sourcePath, const std::wstring& destPath, bool overwrite = true)
-{
-    // BOOL CopyFileW(LPCWSTR lpExistingFileName, LPCWSTR lpNewFileName, BOOL bFailIfExists);
-    if (CopyFileW(sourcePath.c_str(), destPath.c_str(), !overwrite)) {
-        return true;
-    }
-    else {
-        DWORD error = GetLastError();
-        std::cerr << "CopyFile failed with error: " << error << std::endl;
-        return false;
-    }
-}
+// bool CopyFileWin32(const std::wstring& sourcePath, const std::wstring& destPath, bool overwrite = true)
+// {
+//     // BOOL CopyFileW(LPCWSTR lpExistingFileName, LPCWSTR lpNewFileName, BOOL bFailIfExists);
+//     if (CopyFileW(sourcePath.c_str(), destPath.c_str(), !overwrite)) {
+//         return true;
+//     }
+//     else {
+//         DWORD error = GetLastError();
+//         std::cerr << "CopyFile failed with error: " << error << std::endl;
+//         return false;
+//     }
+// }
 
 int
 main(int argc, char *argv[])
 {
-    HMODULE dll = LoadLibraryW(L"compatibility/latest.dll");
-    if (!dll) {
-        MessageBoxW(NULL, L"Failed to load DLL", L"Error", MB_OK);
-        return 1;
-    }
-
-    using MainFn = int(*)(int, char**);
-    MainFn dllMain = (MainFn)GetProcAddress(dll, "main");
-
-    if (!dllMain) {
-        MessageBoxW(NULL, L"`main` function not found", L"Error", MB_OK);
-        FreeLibrary(dll);
-        return 1;
-    }
-
-    int result = dllMain(argc, argv);
-    FreeLibrary(dll);
-    return result;
-
+    VersionLoader::executeLatestVersion(argc, argv);
    // todo: use this in transmission code in latest
    //  char *wasm_file = argv[1];
    //  V2Archive boraApp;

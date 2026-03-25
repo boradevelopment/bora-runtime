@@ -7,7 +7,6 @@
 #include "TAZA.h"
 #include <stdlib.h>
 #include <string.h>
-
 #include "host/Commands.h"
 #include "nWindow/bnMessageBox.h"
 #include "nWindow/bnUserWindow.h"
@@ -30,14 +29,14 @@ static char **app_argv;
 using InitializeSymbolsFunc = int(*)(int, char * b[]);
 
 
-inline std::wstring UTF8ToWString2(const std::string& utf8)
-{
-    if (utf8.empty()) return {};
-    int size_needed = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), (int)utf8.size(), nullptr, 0);
-    std::wstring wstr(size_needed, 0);
-    MultiByteToWideChar(CP_UTF8, 0, utf8.data(), (int)utf8.size(), wstr.data(), size_needed);
-    return wstr;
-}
+// inline std::wstring UTF8ToWString2(const std::string& utf8)
+// {
+//     if (utf8.empty()) return {};
+//     int size_needed = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), (int)utf8.size(), nullptr, 0);
+//     std::wstring wstr(size_needed, 0);
+//     MultiByteToWideChar(CP_UTF8, 0, utf8.data(), (int)utf8.size(), wstr.data(), size_needed);
+//     return wstr;
+// }
 
 #include <cstring>
 #include <string>
@@ -556,12 +555,12 @@ if (msg == ON_UPDATE){
 }
 
 bnWindow* win;
-ULONG_PTR gdiplusToken;
+// ULONG_PTR gdiplusToken;
 
 int
 main(int argc, char *argv[]){
-    GdiplusStartupInput gdiplusStartupInput;
-    GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
+    // GdiplusStartupInput gdiplusStartupInput;
+    // GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
      // CreateBlockingMessageBox(L"test", L"Messagebox Title", L"Messagebox Body for descriptions and details");
      std::cin.get();
      // devBnLogoWindow();

@@ -1,3 +1,7 @@
+collect_sources(BORA_SOURCES_PLATFORM
+        src/host/*
+        src/software/win32/*
+)
 
 set(WAMR_BUILD_PLATFORM "windows")
 include(${WAMR_ROOT_DIR}/build-scripts/runtime_lib.cmake)
@@ -12,7 +16,6 @@ endif()
 
 include(${WAMR_ROOT_DIR}/core/shared/utils/uncommon/shared_uncommon.cmake)
 include_directories(${WAMR_ROOT_DIR}/product-mini/platforms/common ./src/host/templates ../global/cpp ../global/contribs ./src ./src/software/common ./src/software/win32 ./contribs ./3rdparty)
-
 
 add_compile_definitions(
         TAZABASEDIR=\"${CMAKE_SOURCE_DIR}/contribs/TAZA/code\"
@@ -49,7 +52,7 @@ else()
     file(GLOB_RECURSE BORA_LIBS ${CMAKE_SOURCE_DIR}/libs/Release/*.lib)
 endif()
 
-add_library(BORA_COMPAT SHARED src/library.def  ${BORA_SOURCES} ${BORA_CONTRIBS} ${BORA_TAZA} ${BORA_3RDPARTY})
+add_library(BORA_COMPAT SHARED src/library.def ${BORA_SOURCES_PLATFORM} ${BORA_SOURCES} ${BORA_CONTRIBS} ${BORA_TAZA} ${BORA_3RDPARTY})
 target_sources(BORA_COMPAT PRIVATE ${WAMR_RUNTIME_LIB_SOURCE})
 target_link_libraries(BORA_COMPAT PRIVATE Vulkan::Vulkan ntdll ${BORA_SKIA_LIBRARY} ${BORA_LIBS} opengl32.lib)
 target_precompile_headers(BORA_COMPAT PRIVATE

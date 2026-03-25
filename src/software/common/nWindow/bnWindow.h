@@ -1,10 +1,9 @@
 #pragma once
 #ifdef WIN32
-
-#endif
 #include "nWindow/win32Window.h"
 #include "avrt.h"
 #pragma comment(lib, "avrt.lib")
+#endif
 #ifdef __linux__
 #include <X11/Xlib.h>
 #include <X11/Xutil.h>
@@ -15,6 +14,11 @@
 #include <wayland-client.h>
 #include <wayland-egl.h>
 #endif
+#ifdef __APPLE__
+#include "nWindow/darwinWindow.h"
+#endif
+
+
 #include <iostream>
 #include <thread>
 #include <mutex>
@@ -68,6 +72,9 @@ public:
         } else {
             std::cout << "No display found!" << std::endl;
         }
+#elif  defined(__APPLE__)
+        handle = darwinWindow::createWindow(object, configuration, isChild);
+        // todo: audio engine!
 #endif
         gDeltaTimes[handle] = 0.0f;
         running = true;
@@ -105,7 +112,7 @@ public: // DYnamic Variables
     bool dontAffectAnything = false;
     bool usingExpl;
     GraphicsChoice choice = GraphicsChoice::NONE;
-    HWND handle;
+    SysHandle handle;
     bool enableTitlebar = true;
     std::unique_ptr<bnWindowTitlebar> titleBar = nullptr;
     IAudioDevice* rootAudioDevice = nullptr;
@@ -121,12 +128,12 @@ protected:
     bnGraphics* graphics = nullptr;
 public:
     std::atomic<bool> rendering;
-    UINT aliasLevel = 0;
-    UINT aliasQuality = 0;
-    std::vector<UINT> supportedMsaaLevels;
+    u8 aliasLevel = 0;
+    u8 aliasQuality = 0;
+    std::vector<u8> supportedMsaaLevels;
     bool antiAliasing = false;
     bnWindowConstructorStruct* configuration = nullptr;
-    HICON hIcon = nullptr;
+    void* hIcon = nullptr; // temp, use SysIcon type
     bool hasRecentlySwitched = false;
     private:
     void* derivedObject;

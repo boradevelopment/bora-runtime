@@ -4,6 +4,12 @@
 #include <fstream>
 #include <stdexcept>
 
+struct ShaderData {
+    bool valid = false;
+    sVec<u8> data;
+    sVec<u8> ogData;
+};
+
 class Data {
 public:
     // Constructor from file path

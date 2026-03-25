@@ -2,7 +2,11 @@
 
 bnFontMgr::bnFontMgr()
 {
+#ifdef WIN32
     mgr = sk_sp<SkFontMgr>(SkFontMgr_New_DirectWrite());
+#elif defined(__APPLE__)
+    mgr = SkFontMgr_New_CoreText(nullptr); // todo?
+#endif
 }
 
 bnFontMgr::~bnFontMgr() {

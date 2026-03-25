@@ -242,7 +242,7 @@ public:
         viewport.maxDepth = vp->maxDepth;
 
         scissor.offset = { vp->x, vp->y };
-        scissor.extent = { static_cast<UINT>(vp->width), static_cast<UINT>(vp->height) };
+        scissor.extent = { static_cast<u8>(vp->width), static_cast<u8>(vp->height) };
     }
 
     void* GetNativeHandle() override { return nullptr; }
@@ -374,7 +374,7 @@ public:
     }
 
     void Release() {
-        delete this;
+        delete this; // todo: remove?
     }
 
     void* GetNativeHandle() override { return nullptr; }
@@ -589,8 +589,6 @@ public:
 
     CommandBufferVK(VkCommandBuffer buffer, VkCommandPool& pool) : buffer(buffer), pool(pool) {}
 
-
-
     VkImageMemoryBarrier BarrierCreator(ITexture* image,
         ImageLayout oldLayout,
         ImageLayout newLayout,
@@ -675,7 +673,7 @@ public:
         }
 
         VkImageMemoryBarrier barrier = BarrierCreator(image, oldLayout, newLayout, srcAccessMask, dstAccessMask);
-      
+
         //Todo: Determine source/destination stage masks
         VkPipelineStageFlags srcStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
         VkPipelineStageFlags dstStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
@@ -1228,20 +1226,15 @@ public:
     const char* GetAPIName() const {
         return "VULKAN";
     }
-
     uint32_t GetAPIVersion() const {
         return 130;
     }
-
     bool IsFeatureSupported(const std::string& feature) const {
         return true;
     }
-
     bool Init() override;
-
     ICommandList* GetCommandList() override;
     void DestroyPending();
-
     void BeginFrame() override;
     void EndFrame() override;
     void Present() override;
@@ -1271,7 +1264,6 @@ public:
     ICommandPool* CreateCommandPool(CommandPoolDesc desc) override;
     IDescriptorPool* CreateDescriptorPool(DescriptorPoolDesc desc) override;
     IDescriptorSetLayout* CreateDescriptorSetLayout(DescriptorSetLayoutDesc desc) override;
-
     IDeviceContext* getContext() override {
         return &commandBuffer[currentFrame];
     }
@@ -1287,19 +1279,17 @@ public:
     void UnmapBufferMemory(IBuffer* buffer) override;
     void CopyBufferToImage(ICommandBuffer* cBuffer, IBuffer* srcBuffer, ITexture* dstTexture, BufferImageCopyDesc desc) override;
     void CopyImageToImage(ICommandBuffer* cBuffer, ITexture* srcBuffer, ITexture* dstBuffer, ImageCopyDesc desc) override;
-    ITexture* GetSwapchainImage() override;
+    void ClearPendingReleases() override;
+    void WaitTillImFree() override;ITexture* GetSwapchainImage() override;
+    void PushGroup(const char* name, uint32_t color = 0xFFFFFFFF) override;
+    void PopGroup() override;
+    void SetMarker(const char* name, uint32_t color = 0xFFFFFFFF) override;
     sVec<PipelineVK*> releasePipelines;
     sVec<CommandListVK*> releaseCommandBuffers;
     bool dontClearYet = false;
     std::vector<VkFence> inFlightFences;
-    uint32_t imageIndex;   // From vkAcquireNextImageKHR (swapchain image)
-    size_t currentFrame;   // From modulo MAX_FRAMES_IN_FLIGHT
-    void ClearPendingReleases() override;
-    void WaitTillImFree() override;
-
-    void PushGroup(const char* name, uint32_t color = 0xFFFFFFFF) override;
-    void PopGroup() override;
-    void SetMarker(const char* name, uint32_t color = 0xFFFFFFFF) override;
+    uint32_t imageIndex;
+    size_t currentFrame;
 public:
    
     void CreateSwapChain();

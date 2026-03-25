@@ -91,7 +91,9 @@ include_directories(
 
 # source files
 collect_sources(BORA_SOURCES
-        src/*.cpp src/*.h src/*.hpp src/*.manifest src/*.rc src/*.cc
+        src/mainDynamicLibrary.cpp
+        src/host/*
+        src/software/common/*
 )
 collect_sources(BORA_CONTRIBS
         ../global/cpp/contribs/*.cpp ../global/cpp/contribs/*.hpp ../global/cpp/contribs/*.h
@@ -106,12 +108,13 @@ collect_sources(BORA_3RDPARTY
 #        ../global/libs/*.a ../global/libs/*.lib ../global/libs/*.dlib
 #)
 
-file(GLOB_RECURSE BORA_SOURCES_WRAPPER src/*.cpp src/*.h src/*.hpp src/*.manifest src/*.rc src/*.cc)
-file(GLOB_RECURSE HOST_FILES src/host/*.cpp src/host/*.h src/host/*.hpp src/host/*.cc src/software/common/nGraphics/* src/software/common/nWindow/* src/software/common/nGraphics/* src/software/win32/nGraphics/* src/software/common/nGUI/*)
-list(REMOVE_ITEM BORA_SOURCES_WRAPPER ${HOST_FILES})
+#file(GLOB_RECURSE BORA_SOURCES_WRAPPER src/*.cpp src/*.h src/*.hpp src/*.manifest src/*.rc src/*.cc)
+#file(GLOB_RECURSE HOST_FILES src/host/*.cpp src/host/*.h src/host/*.hpp src/host/*.cc src/software/common/nGraphics/* src/software/common/nWindow/* src/software/common/nGraphics/* src/software/win32/nGraphics/* src/software/common/nGUI/*)
+file(GLOB_RECURSE BORA_SOURCES_WRAPPER src/wrapper/*)
 file(GLOB_RECURSE BORA_SOURCES_CONTRIBWRAPPER ../global/cpp/contribs/*.cpp  ../global/cpp/contribs/*.h  ../global/cpp/contribs/*.hpp)
 file(GLOB_RECURSE GRAPH_FILES ../global/cpp/contribs/nGraphics/*)
 list(REMOVE_ITEM BORA_SOURCES_CONTRIBWRAPPER ${GRAPH_FILES})
+list(REMOVE_ITEM BORA_SOURCES ${BORA_SOURCES_WRAPPER})
 
 if (NOT DEFINED WAMR_BUILD_MEMORY64)
     set (WAMR_BUILD_MEMORY64 1)

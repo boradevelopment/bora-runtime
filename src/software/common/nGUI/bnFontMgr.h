@@ -4,6 +4,8 @@
 #include "bskia/include/core/SkTextBlob.h"
 #ifdef WIN32
 #include "bskia/include/ports/SkTypeface_win.h"
+#elif defined(__APPLE__)
+#include "bskia/include/ports/SkFontMgr_mac_ct.h"
 #endif
 
 class bnFontMgr

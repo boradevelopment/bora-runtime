@@ -1,30 +1,19 @@
 #pragma once
 #include "nGraphics/ImmediateGraphicsAbstract.h"
-#include "GraphicsUtilities.h"
+#include "nGraphics/GraphicsUtilities.h"
 #include <set>
 
-#ifdef WIN32OGL
 class DeviceOGL : public IDevice {
 public:
     void* GetNativeHandle() override {
-        return device; // return HDC as void*
+        return mContext; // return HDC as void*
     }
 
-    void Release() override {
-        if (device) {
-            ReleaseDC(hwnd, device);
-            device = nullptr;
-        }
-    }
-
-    HDC   Get()   const { return device; }
-
+    void Release() override;
 private:
-    void SetHandle(HWND handle) {
-        hwnd = handle;
-    }
-    HWND  hwnd = nullptr;
-    HDC   device = nullptr; // device context
+    void SetHandle(void* handle, void* context);
+    void* mView = nullptr;    // Replacement for HWND
+    void* mContext = nullptr; // Replacement for HDC
     
     friend class bnGraphicsOGL;
 };
@@ -36,45 +25,31 @@ class DeviceContextOGL : public IDeviceContext {
     }
 
 
-    void Release() override {
-        if (renderContext) {
-            wglMakeCurrent(nullptr, nullptr); // unbind
-            wglDeleteContext(renderContext);
-            renderContext = nullptr;
-        }
-    }
+    void Release();
 
-    HGLRC   Get()   const { return renderContext; }
+    void*   Get()   const { return renderContext; }
 
 private:
-    HGLRC renderContext = nullptr; // OpenGL rendering context
+    void* renderContext = nullptr; // OpenGL rendering context
     friend class bnGraphicsOGL;
 };
-#endif
+
 
 class TextureOGL : public ITexture {
 public:
     TextureOGL() : textureID(0) {}
 
     void* GetNativeHandle() override {
-        return reinterpret_cast<void*>(static_cast<uintptr_t>(textureID));
+        return reinterpret_cast<void*>(static_cast<u32>(textureID));
     }
 
-    void Release() override {
-        if (owner) {
-            if (textureID != 0) {
-                glDeleteTextures(1, &textureID);
-                textureID = 0;
-            }
-        }
-        delete this;
-    }
+    void Release();
 
-    GLuint Get() const { return textureID; }
+    u32 Get() { return textureID; }
 
 private:
     friend class bnGraphicsOGL;
-    GLuint textureID;
+    u32 textureID;
     GLTextureFormat format;
 };
 
@@ -87,19 +62,13 @@ public:
         return reinterpret_cast<void*>(static_cast<uintptr_t>(shaderID));
     }
 
-    void Release() override {
-        if (shaderID != 0) {
-            glDeleteShader(shaderID);
-            shaderID = 0;
-        }
-        delete this;
-    }
+    void Release();
 
-    GLuint Get() const { return shaderID; }
+    uintptr_t Get() const { return shaderID; }
 
 private:
     friend class bnGraphicsOGL;
-    GLuint shaderID;
+    uintptr_t shaderID;
 };
 
 class BufferOGL : public IBuffer {
@@ -315,7 +284,6 @@ private:
 };
 
 
-#ifdef WIN32OGL
 class bnGraphicsOGL : public IGraphicsDeviceImmediate
 {
 public:
@@ -365,17 +333,17 @@ public:
 
     void BindShader(IShader* shader) override;
     void BindBuffer(IBuffer* buffer) override;
-    void BindTexture(ITexture* texture, u8 slot = 0) override;
+    void BindTexture(ITexture* texture, uint slot = 0) override;
     void BindInputLayout(IInputLayout* layout) override;
-    void BindSamplerState(ISamplerState* samplerState, u8 slot = 0) override;
+    void BindSamplerState(ISamplerState* samplerState, uint slot = 0) override;
     void BindViewPort(IViewPort* viewPort) override;
     void BindRasterizerState(IRasterizerState*) override;
-    void BindDepthStencilState(IDepthStencilState*, UINT stencilRef = 0) override;
-    void BindBlendState(IBlendState*, const float blendFactor[4], UINT sampleMask = 0xFFFFFFFF) override;
+    void BindDepthStencilState(IDepthStencilState*, uint stencilRef = 0) override;
+    void BindBlendState(IBlendState*, const float blendFactor[4], uint sampleMask = 0xFFFFFFFF) override;
     void BindRenderTarget(IRenderTarget*, IDepthStencil* = nullptr) override;
     void ClearRenderTarget(IRenderTarget* target, const float color[4]) override;
-    void ClearDepthStencil(IDepthStencil* target, float depth, UINT8 stencil) override;
-    void DispatchCompute(UINT x, UINT y, UINT z) override;
+    void ClearDepthStencil(IDepthStencil* target, float depth, uint stencil) override;
+    void DispatchCompute(uint x, uint y, uint z) override;
 
     void CopyToBuffer(IBuffer* buffer, void* data, size_t size) override;
     void Draw(PrimitiveType type, size_t vertexCount, size_t vertexOffset = 0) override;
@@ -413,20 +381,6 @@ private:
     std::vector<BufferOGL*> mappedPointers;
     std::map<BufferOGL*, void**> repeatMappedAddress;
     std::map<BufferOGL*, void**> currentRepeatMappedAddress;
+    GLuint mBlitReadFbo = 0;
+    GLuint mBlitDrawFbo = 0;
 };
-#else
-class bnGraphicsOGL : public IGraphicsDeviceImmediate
-{
-    const char* GetAPIName() const {
-        return "OGL";
-    }
-
-    uint32_t GetAPIVersion() const {
-        return 110;
-    }
-
-    bool IsFeatureSupported(const std::string& feature) const {
-        return false;
-    }
-};
-#endif

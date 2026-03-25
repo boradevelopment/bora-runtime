@@ -1,4 +1,6 @@
 #pragma once
+
+#import <nGraphics/bnGraphicsMTL.h>
 #include "nGraphics/ImmediateGraphicsAbstract.h"
 #include "nGraphics/ExplicitGraphicsAbstract.h"
 #include "nGraphics/GraphicsAbstractions.h"
@@ -7,7 +9,7 @@
 #include "nGraphics/bnGraphicsD3D12.h"
 #endif
 #include "bnGraphicsVK.h"
-#include "bnGraphicsOGL.h"
+#include "software/win32/nGraphics/bnGraphicsOGL.h"
 
 struct GraphicsDeviceResult {
     IGraphicsDevice* device = nullptr;
@@ -37,13 +39,13 @@ inline GraphicsDeviceResult CreateGraphicsDevice(GraphicsChoice choice, SysHandl
 
 #ifdef __APPLE__
     case GraphicsChoice::METAL:
-        result.device = new bnGraphicsMetal(window, *(bnGraphicsConfigMetal*)config);
+        result.device = new bnGraphicsMTL(window, *(bnGraphicsConfigMetal*)config);
         break;
     case GraphicsChoice::VULKAN:
         result.device = new bnGraphicsVK(window, *(bnGraphicsConfigVK*)config); // MoltenVK
         break;
     case GraphicsChoice::OPENGL:
-        result.device = new bnGraphicsOpenGL(window, *(bnGraphicsConfigGL*)config);
+        result.device = new bnGraphicsOGL(window, *(bnGraphicsConfigGL*)config);
         break;
 #endif
 
