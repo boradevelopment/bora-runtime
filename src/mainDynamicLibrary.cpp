@@ -206,6 +206,7 @@ main(int argc, char *argv[]){
     //     rootLogger->addAppender(std::make_shared<FileAppender>("./main_log.log"));
     // }
 
+
     wasm_config_t *config = wasm_config_new();
     if (!config) {
         fprintf(stderr, "Failed to create Wasmtime configuration.\n");
