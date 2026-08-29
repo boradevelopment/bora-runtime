@@ -201,6 +201,8 @@ main(int argc, char *argv[]){
 
 
 
+
+
     // if (AppParam::has("logfile"))
     // { // todo: get string, convert to a fs path and add root to fileAppender!!!
     //     rootLogger->addAppender(std::make_shared<FileAppender>("./main_log.log"));
