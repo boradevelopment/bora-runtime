@@ -296,14 +296,6 @@ main(int argc, char *argv[]){
         printf("Running BORA SDK Version: %s\n", version);
     }
 
-// #ifdef WASM_ENABLE_DEBUG_INTERP
-//     if(AppParam::has("debug")) {
-//         uint32_t debug_port = wasm_runtime_start_debug_instance(exec_env);
-//         printf("Debugging at %d\n", debug_port);
-//     }
-// #endif
-
-
 
     int ret = 0;
 
