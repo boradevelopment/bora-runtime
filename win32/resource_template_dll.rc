@@ -1,0 +1,34 @@
+#include <winres.h>
+
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION        @BORA_VERSION_MAJOR@,@BORA_VERSION_MINOR@,@BORA_VERSION_PATCH@,0
+ PRODUCTVERSION     @BORA_VERSION_MAJOR@,@BORA_VERSION_MINOR@,@BORA_VERSION_PATCH@,0
+ FILEFLAGSMASK      VS_FFI_FILEFLAGSMASK
+#ifdef _DEBUG
+ FILEFLAGS          VS_FF_DEBUG
+#else
+ FILEFLAGS          0x0L
+#endif
+ FILEOS             VOS_NT_WINDOWS32
+ FILETYPE           VFT_DLL
+ FILESUBTYPE        VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0" // U.S. English, Unicode charset
+        BEGIN
+            VALUE "CompanyName",      "BORA Development Organization\0"
+            VALUE "FileDescription",  "BORA Compatability Runtime\0"
+            VALUE "FileVersion",      "@BORA_VERSION_MAJOR@.@BORA_VERSION_MINOR@.@BORA_VERSION_PATCH@\0"
+            VALUE "InternalName",     "@PROJECT_NAME@.dll\0"
+            VALUE "LegalCopyright",   "Copyright (C) @CURRENT_YEAR@. All rights reserved.\0"
+            VALUE "OriginalFilename", "@PROJECT_NAME@.dll\0"
+            VALUE "ProductName",      "BORA Runtime Engine V@BORA_VERSION_MAJOR@.@BORA_VERSION_MINOR@.@BORA_VERSION_PATCH@\0"
+            VALUE "ProductVersion",   "@BORA_VERSION_MAJOR@.@BORA_VERSION_MINOR@.@BORA_VERSION_PATCH@\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

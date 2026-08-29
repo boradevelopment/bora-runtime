@@ -1,0 +1,39 @@
+#include <windows.h>
+#include <winres.h>
+
+// Application Icon
+IDI_ICON1 ICON "../../../assets/icon/bora_win32.ico"
+
+// Executable Metadata
+VS_VERSION_INFO VERSIONINFO
+ FILEVERSION        @BORA_VERSION_MAJOR@,@BORA_VERSION_MINOR@,@BORA_VERSION_PATCH@,0
+ PRODUCTVERSION     @BORA_VERSION_MAJOR@,@BORA_VERSION_MINOR@,@BORA_VERSION_PATCH@,0
+ FILEFLAGSMASK      VS_FFI_FILEFLAGSMASK
+#ifdef _DEBUG
+ FILEFLAGS          VS_FF_DEBUG
+#else
+ FILEFLAGS          0x0L
+#endif
+ FILEOS             VOS_NT_WINDOWS32
+ FILETYPE           VFT_APP // VFT_APP indicates this is an executable (.exe)
+ FILESUBTYPE        VFT2_UNKNOWN
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904b0" // U.S. English, Unicode charset
+        BEGIN
+            VALUE "CompanyName",      "BORA Development\0"
+            VALUE "FileDescription",  "BORA Runtime Host Application\0"
+            VALUE "FileVersion",      "@BORA_WRAPPER_VERSION_MAJOR@.@BORA_WRAPPER_VERSION_MINOR@.@BORA_WRAPPER_VERSION_PATCH@\0"
+            VALUE "InternalName",     "@PROJECT_NAME@.exe\0"
+            VALUE "LegalCopyright",   "Copyright (C) @CURRENT_YEAR@ BORA Engine. All rights reserved.\0"
+            VALUE "OriginalFilename", "@PROJECT_NAME@.exe\0"
+            VALUE "ProductName",      "BORA Runtime \0"
+            VALUE "ProductVersion",   "@BORA_WRAPPER_VERSION_MAJOR@.@BORA_WRAPPER_VERSION_MINOR@.@BORA_WRAPPER_VERSION_PATCH@\0"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END

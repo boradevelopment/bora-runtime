@@ -10,6 +10,7 @@
 #include "wasm_loader.h"
 #include "wasm_memory.h"
 #include "../common/wasm_exec_env.h"
+#include "host/WasmTools.h"
 #if WASM_ENABLE_GC != 0
 #include "../common/gc/gc_object.h"
 #include "mem_alloc.h"
@@ -31,7 +32,7 @@ typedef float32 CellType_F32;
 typedef float64 CellType_F64;
 
 #if WASM_ENABLE_THREAD_MGR == 0
-#define get_linear_mem_size() linear_mem_size
+#define get_linear_mem_size() memory->memory_data_size // hard coded
 #else
 /**
  * Load memory data size in each time boundary check in
@@ -73,7 +74,7 @@ typedef float64 CellType_F64;
 
 #define CHECK_BULK_MEMORY_OVERFLOW(start, bytes, maddr)                        \
     do {                                                                       \
-        uint64 offset1 = (uint32)(start);                                      \
+        uint64 offset1 = (start);                                      \
         CHECK_SHARED_HEAP_OVERFLOW(offset1, bytes, maddr)                      \
         if (disable_bounds_checks || offset1 + bytes <= get_linear_mem_size()) \
             /* App heap space is not valid space for                           \
@@ -420,6 +421,8 @@ wasm_interp_get_frame_ref(WASMInterpFrame *frame)
 #define read_uint32(p) \
     (p += sizeof(uint32), LOAD_U32_WITH_2U16S(p - sizeof(uint32)))
 
+#define LOAD_U64_WITH_2U16S(addr) (*(uint64 *)(addr))
+#define read_uint64(p) (p += sizeof(uint64), LOAD_U64_WITH_2U16S(p - sizeof(uint64)))
 #define GET_LOCAL_INDEX_TYPE_AND_OFFSET()                                \
     do {                                                                 \
         uint32 param_count = cur_func->param_count;                      \
@@ -3945,7 +3948,7 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
 
             HANDLE_OP(WASM_OP_I64_STORE)
             {
-                uint32 offset, addr;
+                uint64 offset, addr;
                 uint64 sval;
                 offset = read_uint32(frame_ip);
                 sval = GET_OPERAND(uint64, I64, 0);
@@ -3998,42 +4001,43 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
             /* memory size and memory grow instructions */
             HANDLE_OP(WASM_OP_MEMORY_SIZE)
             {
-                uint32 reserved;
+                uint64 reserved;
                 addr_ret = GET_OFFSET();
                 frame_lp[addr_ret] = memory->cur_page_count;
                 (void)reserved;
                 HANDLE_OP_END();
             }
 
-            HANDLE_OP(WASM_OP_MEMORY_GROW)
-            {
-                uint32 reserved, delta,
-                    prev_page_count = memory->cur_page_count;
+                HANDLE_OP(WASM_OP_MEMORY_GROW)
+                {
+                    uint64 reserved, delta,
+                        prev_page_count = memory->cur_page_count;
 
-                addr1 = GET_OFFSET();
-                addr_ret = GET_OFFSET();
-                delta = (uint32)frame_lp[addr1];
+                    addr1 = GET_OFFSET();
+                    addr_ret = GET_OFFSET();
+                    delta = (uint32)frame_lp[addr1];
 
-                /* TODO: multi-memory wasm_enlarge_memory_with_idx() */
-                if (!wasm_enlarge_memory(module, delta)) {
-                    /* failed to memory.grow, return -1 */
-                    frame_lp[addr_ret] = -1;
+                    /* TODO: multi-memory wasm_enlarge_memory_with_idx() */
+                    if (!wasm_enlarge_memory(module, delta)) {
+                        /* failed to memory.grow, return -1 */
+                        frame_lp[addr_ret] = -1;
+                        goto got_exception;
+                    }
+                    else {
+                        /* success, return previous page count */
+                        frame_lp[addr_ret] = prev_page_count;
+                        /* update memory size, no need to update memory ptr as
+                           it isn't changed in wasm_enlarge_memory */
+    #if !defined(OS_ENABLE_HW_BOUND_CHECK)              \
+        || WASM_CPU_SUPPORTS_UNALIGNED_ADDR_ACCESS == 0 \
+        || WASM_ENABLE_BULK_MEMORY != 0
+                        linear_mem_size = GET_LINEAR_MEMORY_SIZE(memory);
+    #endif
+                    }
+
+                    (void)reserved;
+                    HANDLE_OP_END();
                 }
-                else {
-                    /* success, return previous page count */
-                    frame_lp[addr_ret] = prev_page_count;
-                    /* update memory size, no need to update memory ptr as
-                       it isn't changed in wasm_enlarge_memory */
-#if !defined(OS_ENABLE_HW_BOUND_CHECK)              \
-    || WASM_CPU_SUPPORTS_UNALIGNED_ADDR_ACCESS == 0 \
-    || WASM_ENABLE_BULK_MEMORY != 0
-                    linear_mem_size = GET_LINEAR_MEMORY_SIZE(memory);
-#endif
-                }
-
-                (void)reserved;
-                HANDLE_OP_END();
-            }
 
             /* constant instructions */
             HANDLE_OP(WASM_OP_F64_CONST)
@@ -5284,12 +5288,12 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
                     }
                     case WASM_OP_MEMORY_FILL:
                     {
-                        uint32 dst, len;
+                        uint64 dst, len;
                         uint8 fill_val, *mdst;
 
-                        len = POP_I32();
-                        fill_val = POP_I32();
-                        dst = POP_I32();
+                        len = POP_I64();
+                        fill_val = POP_I64();
+                        dst = POP_I64();
 
 #if WASM_ENABLE_THREAD_MGR != 0
                         linear_mem_size = get_linear_mem_size();
@@ -7834,7 +7838,10 @@ wasm_interp_call_func_bytecode(WASMModuleInstance *module,
 
     got_exception:
         SYNC_ALL_TO_FRAME();
-        return;
+        if (module->pending_exception_handler) {
+            prev_frame->dueException = true;
+        }
+        goto return_func;
 
 #if WASM_ENABLE_LABELS_AS_VALUES == 0
     }
@@ -7994,6 +8001,36 @@ wasm_interp_call_wasm(WASMModuleInstance *module_inst, WASMExecEnv *exec_env,
     }
     else {
         wasm_interp_call_func_bytecode(module_inst, exec_env, function, frame);
+    }
+    // Previous Frame was due an exception! This means that there is a exception catcher available
+    // The exception catcher will need to be called through the module!
+    if (frame->dueException) {
+
+        wasm_exec_env_t handler_env = wasm_runtime_create_exec_env(module_inst, 512 * 1024);
+        WasmTools::RequestExportedMethod()
+        // 3. Prepare arguments (Using uint64 for Memory64 compatibility)
+        uint64_t argv[2] = { (uint64_t)wasm_runtime_addr_native_to_app(module_inst, module_inst->pending_exception_handler) };
+
+        // 4. Call the function
+        if (wasm_runtime_call_wasm(handler_env, module_inst->pending_exception_handler, 2, (uint32_t*)argv)) {
+            // The return value is placed in the beginning of the argv array
+            int32_t ret = (int32_t)argv[0];
+            switch (ret) {
+                case 0:  // handler finished OK
+                    printf("USER RETURNED 0 - OK\n");
+                    break;
+                case 1:  // user requested continue
+                    // unsafe: only do if separate exec_env is used
+                    printf("USER RETURNED 0 - CONTINUE - UNSAFE?\n");
+                    wasm_interp_call_func_bytecode(module_inst, exec_env, function, frame);
+                    break;
+                default:
+                    // treat as error
+                    wasm_set_exception(module_inst, "Exception handler failed");
+                    return;
+            }
+        }
+
     }
 
     /* Output the return value to the caller */
