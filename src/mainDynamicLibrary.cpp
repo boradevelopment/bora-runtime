@@ -207,6 +207,7 @@ main(int argc, char *argv[]){
     // }
 
 
+
     wasm_config_t *config = wasm_config_new();
     if (!config) {
         fprintf(stderr, "Failed to create Wasmtime configuration.\n");
