@@ -36,24 +36,24 @@ public:
     void OnMouseMove();
     int OnNCMouseButtonDown();
     void OnNCMouseButtonUp();
-    void OnNCRMouseButtonUp(LPARAM l_param);
-    LRESULT OnNCHitTest(LPARAM l_param);
-    void OnNCCalcResult(LPARAM l_param);
-    void OnGetMaxInfo(LPARAM l_param);
+    void OnNCRMouseButtonUp(i64 l_param);
+    i64 OnNCHitTest(i64 l_param);
+    void OnNCCalcResult(i64 l_param);
+    void OnGetMaxInfo(i64 l_param);
     void OnNCMouseLeave();
 
     void Show() { isHidden = false; };
     void Hide() { isHidden = true; };
 
-bool CopyBuffer(BYTE* destination, size_t maxSize) {
-    BYTE* buffer = titleBarImage.load(std::memory_order_acquire);
-    size_t size = titleBarImageSize.load(std::memory_order_acquire);
-
-    if (!buffer || size > maxSize) return false;  // Prevent buffer overflow
-
-    memcpy(destination, buffer, size);
-    return true;
-}
+// bool CopyBuffer(u8* destination, size_t maxSize) {
+//     u8* buffer = titleBarImage.load(std::memory_order_acquire);
+//     size_t size = titleBarImageSize.load(std::memory_order_acquire);
+//
+//     if (!buffer || size > maxSize) return false;  // Prevent buffer overflow
+//
+//     memcpy(destination, buffer, size);
+//     return true;
+// }
 
 typedef enum {
     CustomTitleBarHoveredButton_None = 0,
@@ -71,15 +71,15 @@ enum CustomTitleBarPressedButton {
 
 public:
 
-    void UpdateBuffer(const BYTE* source, size_t size) {
-        BYTE* newBuffer = new BYTE[size];
-        memcpy(newBuffer, source, size);
-
-        BYTE* oldBuffer = titleBarImage.exchange(newBuffer, std::memory_order_acq_rel);
-        size_t oldSize = titleBarImageSize.exchange(size, std::memory_order_release);
-
-        if (oldBuffer) delete[] oldBuffer;
-    }
+    // void UpdateBuffer(const u8* source, size_t size) {
+    //     u8* newBuffer = new u8[size];
+    //     memcpy(newBuffer, source, size);
+    //
+    //     u8* oldBuffer = titleBarImage.exchange(newBuffer, std::memory_order_acq_rel);
+    //     size_t oldSize = titleBarImageSize.exchange(size, std::memory_order_release);
+    //
+    //     if (oldBuffer) delete[] oldBuffer;
+    // }
 
 
     bnWindow& window;
@@ -95,9 +95,11 @@ public:
         SkPoint ripplePos;       // press position
     };
 
-    static SkColor BlendColor(COLORREF baseColor, float alpha);
-    static WindowRect win32_fake_shadow_rect(HWND handle);
+    static Color4f BlendColor(Color4f baseColor, float alpha);
+    static WindowRect win32_fake_shadow_rect(SysHandle handle);
+#ifdef WIN32
     static void set_menu_item_state(HMENU menu, MENUITEMINFO* menuItemInfo, UINT item, bool enabled);
+#endif
 
     void UpdateFade(HoverFadeState& state, const float speed = 5);
     struct CustomTitleBarButtonRects {
@@ -125,7 +127,7 @@ public:
 
 
 
-    static int win32_dpi_scale(int value, UINT dpi);
+    static int win32_dpi_scale(int value, uint dpi);
     static void win32_center_rect_in_rect(WindowRect* to_center, const WindowRect* outer_rect);
     std::atomic_bool mouseOnBar = false;
     bool changed = false;
@@ -134,24 +136,29 @@ public:
     bool win32_window_is_maximized();
     WindowRect win32_titlebar_rect(bool noHideOffset = false);
     void UpdateHidePos();
+#ifdef WIN32
     void updateLPMMI(LPMINMAXINFO lpMMI);
-    void RenderFrame(bnGraphics* graphics, GraphicsAdvanced* advanced, GraphicAdvancedCommandList* list,
-    ResourceHandle<IInputLayout>* inputLayout,
-    ResourceHandle<ISamplerState>* samplerState,
-    ResourceHandle<IBlendState>* blending,
-    ResourceHandle<IRasterizerState>* rast,
-    ResourceHandle<IDepthStencilState>* depth,
-    ResourceHandle<ICommandPool>* copyTexturePool,
-    ResourceHandle<IShader>* vertexShader,
-    ResourceHandle<IShader>* pixelShader,
-    ResourceHandle<IViewPort>* viewport, ResourceHandle<IDescriptorPool>* dPool,
-        ResourceHandle<IDescriptorSetLayout>* dSetLayout);
+#else
+    void updateLPMMI(WindowMinMaxInfo info);
+#endif
 
+    // void RenderFrame(bnGraphics* graphics, GraphicsAdvanced* advanced, GraphicAdvancedCommandList* list,
+    // ResourceHandle<IInputLayout>* inputLayout,
+    // ResourceHandle<ISamplerState>* samplerState,
+    // ResourceHandle<IBlendState>* blending,
+    // ResourceHandle<IRasterizerState>* rast,
+    // ResourceHandle<IDepthStencilState>* depth,
+    // ResourceHandle<ICommandPool>* copyTexturePool,
+    // ResourceHandle<IShader>* vertexShader,
+    // ResourceHandle<IShader>* pixelShader,
+    // ResourceHandle<IViewPort>* viewport, ResourceHandle<IDescriptorPool>* dPool,
+    //     ResourceHandle<IDescriptorSetLayout>* dSetLayout);
+    //
+    //
+    // void ReleaseRenderVars(IGraphicsDevice* graphics);
 
-    void ReleaseRenderVars(IGraphicsDevice* graphics);
-
-    BITMAP titleBarBit;
-    SkFont titleFont;
+    // BITMAP titleBarBit;
+    ResourceHandle<IGUIFont> titleFont;
     bnFontMgr mgr;
     bool flickerEffect = false;
 private:
@@ -161,14 +168,14 @@ private:
     CustomTitleBarPressedButton title_bar_pressed_button = CustomTitleBarPressedButton_None;
     CustomTitleBarHoveredButton title_bar_hovered_button = CustomTitleBarHoveredButton_None;
 
-    std::atomic<u8*> titleBarImage;
-    std::atomic<size_t> titleBarImageSize;
-    LOGFONT logical_font;
-    HFONT old_font = NULL;
-    HFONT theme_font = NULL;
-    HDC memDC;
-    HDC hdc;
-  
+    // std::atomic<u8*> titleBarImage;
+    // std::atomic<size_t> titleBarImageSize;
+    // LOGFONT logical_font;
+    // HFONT old_font = NULL;
+    // HFONT theme_font = NULL;
+    // HDC memDC;
+    // HDC hdc;
+    //
     float hideOffset = 0.0f;
     std::chrono::steady_clock::time_point lastFocusTime;
     bool isHidden = true;
@@ -178,9 +185,13 @@ private:
     std::chrono::steady_clock::time_point cursorLeaveTime;
     bool cursorOnTop = false;
     Data* cachedLogoSource = nullptr; // pointer to currently cached source
-    u8* lastLogoPtr;
+    // u8* lastLogoPtr;
     sk_sp<SkImage> cachedLogo = nullptr;
+#ifdef WIN32
     LPMINMAXINFO llpMMI = nullptr;
+#else
+    WindowMinMaxInfo llpMMI;
+#endif
     std::wstring title;
     int framesAfterFrozen = 5; // When initalized, the application is not frozen.
     // Render Variables

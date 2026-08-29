@@ -193,6 +193,15 @@ void GraphicsAdvanced::CopyImageToImage(ResourceHandle<ICommandBuffer>* cBuffer,
 	commands->push_back(std::make_unique<CopyImageToImageCommandAdvanced>(cBuffer, srcBuffer, dstBuffer, desc));
 }
 
+void GraphicsAdvanced::BuilderFrom(ResourceHandle<IPipelineBuilder> *destObject,
+	ResourceHandle<IPipelineBuilder> *srcObject) {
+	commands->push_back(std::make_unique<PipelineFromCommand>(destObject, srcObject));
+}
+
+void GraphicsAdvanced::ReleaseBuilder(ResourceHandle<IPipelineBuilder> *builder) {
+	commands->push_back(std::make_unique<PipelineDeleteCommand>(builder));
+}
+
 void GraphicsAdvanced::BuilderAddShader(ResourceHandle<IPipelineBuilder>* builder, ResourceHandle<IShader>* shader)
 {
 	commands->push_back(std::make_unique<PipelineAddShaderCommand>(shader, builder));
@@ -231,6 +240,23 @@ void GraphicsAdvanced::BuilderSetDescriptorSetLayout(ResourceHandle<IPipelineBui
 void GraphicsAdvanced::BuilderSetRenderTarget(ResourceHandle<IPipelineBuilder>* builder, ResourceHandle<IRenderTarget>* target)
 {
 	//commands->push_back(std::make_unique<PipelineSetRenderTargetCommand>(builder, target));
+}
+
+PipelineBuilderImmediate & PipelineBuilderImmediate::From(const IPipelineBuilder &builder) {
+	const auto* src = dynamic_cast<const PipelineBuilderImmediate*>(&builder);
+
+	if (src) {
+		this->shaders          = src->shaders;
+		this->inputLayout      = src->inputLayout;
+		this->renderPass     = src->renderPass;
+		this->rasterizer       = src->rasterizer;
+		this->depthStencil     = src->depthStencil;
+		this->blendState       = src->blendState;
+		this->descriptorPool   = src->descriptorPool;
+		this->descriptorSetLayout = src->descriptorSetLayout;
+	}
+
+	return *this;
 }
 
 PipelineBuilderImmediate& PipelineBuilderImmediate::AddShader(IShader* shader)
@@ -285,7 +311,6 @@ PipelineBuilderImmediate& PipelineBuilderImmediate::SetDescriptorSetLayout(IDesc
 IPipeline* PipelineBuilderImmediate::Build()
 {
 	if (!inputLayout || !rasterizer || !depthStencil || !blendState) {
-		delete this;
 		return nullptr;
 	}
 ;
@@ -302,7 +327,6 @@ IPipeline* PipelineBuilderImmediate::Build()
 		vector
 	);
 
-	delete this;
 	return pl;
 
 }

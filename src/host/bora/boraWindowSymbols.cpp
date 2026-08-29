@@ -25,9 +25,9 @@ void BoraWindowSymbols::windowCommandHookInit() {
 });
 }
 
-u64 BoraWindowSymbols::createWindow(wasm_exec_env_t exec_env, u64 configuration_ptr, u64 update_ptr) {
-    const char* id = WasmTools::fromWASM<const char*>(exec_env, configuration_ptr);
-    const void* updatePointer = WasmTools::fromWASM<const void*>(exec_env, update_ptr);
+u64 BoraWindowSymbols::createWindow(wasmtime_caller_t* moduleCaller, wasmtime_context_t* moduleContext, u64 configuration_ptr, u64 update_ptr) {
+    const char* id = WasmTools::fromWASM<const char*>(moduleCaller, moduleContext, configuration_ptr);
+    const void* updatePointer = WasmTools::fromWASM<const void*>(moduleCaller,moduleContext, update_ptr);
     bnUserWindowConfig e;
     e.id = utf8ToWstring(id);
     e.title = utf8ToWstring(id);
@@ -35,10 +35,10 @@ u64 BoraWindowSymbols::createWindow(wasm_exec_env_t exec_env, u64 configuration_
     return windows.size();
 }
 
-u64 BoraWindowSymbols::runWindow(wasm_exec_env_t exec_env, u64 window_ptr) {
+u64 BoraWindowSymbols::runWindow(wasmtime_caller_t* moduleCaller, wasmtime_context_t* moduleContext, u64 window_ptr) {
     return 0;
 }
 
-u64 BoraWindowSymbols::closeWindow(wasm_exec_env_t exec_env, u64 window_ptr) {
+u64 BoraWindowSymbols::closeWindow(wasmtime_caller_t* moduleCaller, wasmtime_context_t* moduleContext, u64 window_ptr) {
     return 0;
 }

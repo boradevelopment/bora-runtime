@@ -58,14 +58,14 @@ struct IGPUCommand : public ICommand
 {
     ~IGPUCommand() override = default;
     virtual void Execute(IGraphicsDevice* device) = 0;
-    void ExecuteStatic(void* context, wasm_module_inst_t wasmModule) override {
+    void ExecuteStatic(void* context, wasmtime_context_t* wasmContext, const WasmRuntimeModule* wasmModule) override {
         Execute(static_cast<IGraphicsDevice *>(context));
     }
 };
 
 using GPUFunction = std::function<void(IGraphicsDevice*)>;
-using CommandVector = MutexableVector<std::unique_ptr<IGPUCommand>>;//std::vector<std::unique_ptr<IGPUCommand>>;
-using CommandVectorPlain = MutexableVector<IGPUCommand>; //std::vector<IGPUCommand*>;
+using CommandVector = ThreadLocalCommandStream<std::unique_ptr<IGPUCommand>>;//std::vector<std::unique_ptr<IGPUCommand>>;
+using CommandVectorPlain = ThreadLocalCommandStream<IGPUCommand>; //std::vector<IGPUCommand*>;
 
 class bnGraphics;
 

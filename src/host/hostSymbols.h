@@ -1,3 +1,4 @@
+#pragma once
 #include "stl/thread.h"
 #include "hostSymbolRegister.h"
 
@@ -6,7 +7,7 @@ public:
     hostSymbols();
 public:
     void initalizeSymbols();
-    void registerSymbol();
+    void registerSymbol(wasmtime_linker_t* linker);
 private:
     hostSymbolRegister* registers;
 };

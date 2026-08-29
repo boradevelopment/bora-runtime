@@ -6,13 +6,26 @@
 #include "modules/svg/include/SkSVGDOM.h"
 #include "modules/svg/include/SkSVGRenderContext.h"
 #include "include/core/SkStream.h"
+#include "nGUI/skia/interfaces/IGUISize.h"
+#include "nGUI/skia/interfaces/svg/IGUISVGDOM.h"
 
-sk_sp<SkSVGDOM> load_svg(const char* path) {
-    SkFILEStream stream(path);
-    if (!stream.isValid()) return nullptr;
+ResourceHandle<IGUISVGDOM> load_svg(const char* path) {
+    std::ifstream file(path, std::ios::ate | std::ios::binary);
+    if (!file.is_open()) {
+        return nullptr; // Or handle error accordingly
+    }
 
-    // Optional: provide a resource provider for fonts/images inside the SVG
-    return SkSVGDOM::MakeFromStream(stream);
+    const std::streamsize fileSize = file.tellg();
+    if (fileSize <= 0) {
+        return nullptr;
+    }
+    vec8 buffer(static_cast<size_t>(fileSize));
+    file.seekg(0, std::ios::beg);
+    if (!file.read(reinterpret_cast<char*>(buffer.data()), fileSize)) {
+        return nullptr;
+    }
+    // todo: add font/image providers
+    return IGUISVGDOM::CreateFromBinary(buffer.data(), buffer.size());
 }
 
 devBnLogoWindow::devBnLogoWindow()
@@ -52,7 +65,6 @@ void devBnLogoWindow::updateFunction(bnUserWindow* window, unsigned int msg, uin
         auto advanced = window->userGraphics->makeAdvanced();
         window->userGraphics->ReleaseShader(&fragmentShader);
         window->userGraphics->ReleaseShader(&vertexShader);
-        window->userGraphics->ReleaseShader(&fragmentShader);
         window->userGraphics->ReleaseTexture(&texture);
         advanced->UnmapBufferMemory(&uboBuffer);
         window->userGraphics->ReleaseBuffer(&uboBuffer);
@@ -70,7 +82,6 @@ void devBnLogoWindow::updateFunction(bnUserWindow* window, unsigned int msg, uin
         auto advanced = window->userGraphics->makeAdvanced();
         window->userGraphics->ReleaseShader(&fragmentShader);
         window->userGraphics->ReleaseShader(&vertexShader);
-        window->userGraphics->ReleaseShader(&fragmentShader);
         window->userGraphics->ReleaseTexture(&texture);
         advanced->UnmapBufferMemory(&uboBuffer);
         window->userGraphics->ReleaseBuffer(&uboBuffer);
@@ -137,55 +148,15 @@ void devBnLogoWindow::updateFunction(bnUserWindow* window, unsigned int msg, uin
             tbDesc.CpuAccessWrite = true;
             tbDesc.isRenderTarget = true;
             window->userGraphics->CreateTexture(tbDesc, nullptr, &texture);
-
+            // in-engine gui system incomplete.
             window->userGraphics->CallFunctionInSubmission([=](IGraphicsDevice* device) {
-               auto ui = window->guiRenderer->CreateSurfaceFromTexture(texture);
+                auto surface = window->defaultGUIRenderer->createFrameSurface(texture);
                 auto svg = load_svg("blogo_anim.svg");
-                SkSize containerSize = SkSize::Make(ui->width(), ui->height());
-
-                // 3. Set the container size so the SVG knows how to scale % units
+                IGUISize containerSize = IGUISize::Make(surface->GetWidth(), surface->GetHeight());
                 svg->setContainerSize(containerSize);
-
-                // 4. Render
-                svg->render(ui->getCanvas());
-
-                window->guiRenderer->Flush();
+                svg->render(surface->GetCanvas());
             });
 
-           //  BufferDesc stagingDesc = {};
-           //  stagingDesc.size = tbDesc.widthBytes * tbDesc.height;
-           //  stagingDesc.type = BufferType::Staging;
-           //
-           //  window->userGraphics->CreateBuffer(stagingDesc, nullptr, &stagingBuffer);
-           //  graphs->MapBufferMemory(&stagingBuffer, &dataGPU);
-           //
-           //  MemoryCommands::Copy(graphs->getCommands(),
-           //      &dataGPU,
-           //      (unsigned char*)data.Get(),
-           //      tbDesc.widthBytes * tbDesc.height);
-           //
-           // // stbi_image_free(data);
-           //  MemoryCommands::Free(graphs->getCommands(), &data);
-           //  graphs->UnmapBufferMemory(&stagingBuffer);
-           //
-           //  BufferImageCopyDesc region{};
-           //  region.imageSubresource.aspectMask = IMAGE_ASPECT_COLOR_BIT;
-           //  region.imageSubresource.layerCount = 1;
-           //  region.bufferOffset = 0;
-           //  region.bufferRowLength = 0;
-           //  region.bufferImageHeight = 0;
-           //  region.imageOffset = { 0, 0, 0 };
-           //  region.imageExtent = {
-           //      static_cast<uint32_t>(tbDesc.width),
-           //      static_cast<uint32_t>(tbDesc.height),
-           //      1
-           //  };
-           //
-           //
-           //  auto poolCommand = graphs->BeginSingleTimeCommands(&window->copyTexturePool);
-           //  graphs->CopyBufferToImage(poolCommand, &stagingBuffer, &texture, region);
-           //  graphs->EndSingleTimeCommands(poolCommand);
-           //  window->userGraphics->ReleaseBuffer(&stagingBuffer);
         }
 
       
@@ -240,8 +211,6 @@ void devBnLogoWindow::updateFunction(bnUserWindow* window, unsigned int msg, uin
 
         if (!pipeline || !set) {
             auto builderObj = graphs->CreatePipelineBuilder();
-            auto builder = builderObj->Get();
-
             graphs->BuilderAddShader(builderObj, &fragmentShader);
             graphs->BuilderAddShader(builderObj, &vertexShader);
             graphs->BuilderSetBlendState(builderObj, &window->blending);
@@ -250,8 +219,8 @@ void devBnLogoWindow::updateFunction(bnUserWindow* window, unsigned int msg, uin
             graphs->BuilderSetDepthStencil(builderObj, &window->depth);
             graphs->BuilderSetDescriptorPool(builderObj, &dPool);
             graphs->BuilderSetDescriptorSetLayout(builderObj, &dSetLayout);
-
             graphs->CreatePipeline(builderObj, &pipeline);
+            graphs->ReleaseBuilder(builderObj);
             graphs->CreateDescriptorSet(&pipeline, 0, &set);
 
             graphs->SetDescriptorSetBuffer(&set, &uboBuffer);

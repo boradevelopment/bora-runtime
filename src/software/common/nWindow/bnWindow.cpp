@@ -42,7 +42,7 @@ void bnWindow::switchGraphics(GraphicsChoice choice)
     }
     preDestroyFunctions();
     pauseRender = true;
-    RECT clientRect;
+    WindowRect clientRect;
     GetClientRect(handle, &clientRect);
     int width = clientRect.right;
     int height = clientRect.bottom;

@@ -8,9 +8,9 @@ void hostSymbolRegister::add(std::unique_ptr<HostSymbolTemplate> module) {
     get_modules().emplace_back(std::move(module));
 }
 
-void hostSymbolRegister::register_all() {
+void hostSymbolRegister::register_all(wasmtime_linker_t* linker) {
     for (const auto& module : get_modules()) {
-        module->register_symbols();
+        module->bind_symbols(linker);
     }
 }
 

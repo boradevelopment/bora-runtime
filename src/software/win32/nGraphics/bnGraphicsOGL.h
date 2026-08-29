@@ -49,7 +49,6 @@ private:
     HGLRC renderContext = nullptr; // OpenGL rendering context
     friend class bnGraphicsOGL;
 };
-#endif
 
 class TextureOGL : public ITexture {
 public:
@@ -363,17 +362,17 @@ public:
 
     void BindShader(IShader* shader) override;
     void BindBuffer(IBuffer* buffer) override;
-    void BindTexture(ITexture* texture, u8 slot = 0) override;
+    void BindTexture(ITexture* texture, uint slot = 0) override;
     void BindInputLayout(IInputLayout* layout) override;
-    void BindSamplerState(ISamplerState* samplerState, u8 slot = 0) override;
+    void BindSamplerState(ISamplerState* samplerState, uint slot = 0) override;
     void BindViewPort(IViewPort* viewPort) override;
     void BindRasterizerState(IRasterizerState*) override;
-    void BindDepthStencilState(IDepthStencilState*, UINT stencilRef = 0) override;
-    void BindBlendState(IBlendState*, const float blendFactor[4], UINT sampleMask = 0xFFFFFFFF) override;
+    void BindDepthStencilState(IDepthStencilState*, uint stencilRef = 0) override;
+    void BindBlendState(IBlendState*, const float blendFactor[4], uint sampleMask = 0xFFFFFFFF) override;
     void BindRenderTarget(IRenderTarget*, IDepthStencil* = nullptr) override;
     void ClearRenderTarget(IRenderTarget* target, const float color[4]) override;
-    void ClearDepthStencil(IDepthStencil* target, float depth, UINT8 stencil) override;
-    void DispatchCompute(UINT x, UINT y, UINT z) override;
+    void ClearDepthStencil(IDepthStencil* target, float depth, u8 stencil) override;
+    void DispatchCompute(uint x, uint y, uint z) override;
 
     void CopyToBuffer(IBuffer* buffer, void* data, size_t size) override;
     void Draw(PrimitiveType type, size_t vertexCount, size_t vertexOffset = 0) override;

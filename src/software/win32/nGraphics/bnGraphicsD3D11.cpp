@@ -1,7 +1,6 @@
-﻿#ifdef WIN32
-#include "bnGraphicsD3D11.h"
-
+﻿#include "bnGraphicsD3D11.h"
 #include <d3d11_1.h>
+#include "nGraphics/GraphicsUtilities.h"
 
 
 bnGraphicsD3D11::bnGraphicsD3D11(SysHandle& handle, IGraphicsDeviceConfig& config) : windowHandle(handle), config(config)
@@ -321,6 +320,14 @@ void bnGraphicsD3D11::UpdateViewPorts()
     viewports.clear();
 }
 
+D3D11_PRIMITIVE_TOPOLOGY bnGraphicsD3D11::ConvertTopology(PrimitiveType type) {
+    switch (type) {
+        case PrimitiveType::Triangles: return D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+        case PrimitiveType::Lines: return D3D11_PRIMITIVE_TOPOLOGY_LINELIST;
+        // others...
+        default: return D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
+    }
+}
 
 
 ITexture* bnGraphicsD3D11::CreateTexture(const TextureDesc& desc, const void* initialData)
@@ -662,12 +669,12 @@ IViewPort* bnGraphicsD3D11::CreateViewPort(const ViewPortDesc& desc)
     ViewPortD3D11* viewPort = new ViewPortD3D11();
 
     D3D11_VIEWPORT d3dVp;
-    d3dVp.TopLeftX = static_cast<FLOAT>(desc.viewport->x);
-    d3dVp.TopLeftY = static_cast<FLOAT>(desc.viewport->y);
-    d3dVp.Width = static_cast<FLOAT>(desc.viewport->width);
-    d3dVp.Height = static_cast<FLOAT>(desc.viewport->height);
-    d3dVp.MinDepth = static_cast<FLOAT>(desc.viewport->minDepth);
-    d3dVp.MaxDepth = static_cast<FLOAT>(desc.viewport->maxDepth);
+    d3dVp.TopLeftX = desc.viewport->x;
+    d3dVp.TopLeftY = desc.viewport->y;
+    d3dVp.Width = desc.viewport->width;
+    d3dVp.Height = desc.viewport->height;
+    d3dVp.MinDepth = desc.viewport->minDepth;
+    d3dVp.MaxDepth = desc.viewport->maxDepth;
 
     viewPort->mViewPortData.viewport = d3dVp;
     for (auto& vp : viewports) {
@@ -1015,7 +1022,7 @@ void bnGraphicsD3D11::BindBuffer(IBuffer* buffer)
 
 }
 
-void bnGraphicsD3D11::BindTexture(ITexture* texture, u8 slot)
+void bnGraphicsD3D11::BindTexture(ITexture* texture, uint slot)
 {
     TextureD3D11* d3dTexture = dynamic_cast<TextureD3D11*>(texture);
     if (!d3dTexture || !d3dTexture->mSrv) {
@@ -1034,7 +1041,7 @@ void bnGraphicsD3D11::BindInputLayout(IInputLayout* layout)
     context->IASetInputLayout(d3dLayout->mLayout);
 }
 
-void bnGraphicsD3D11::BindSamplerState(ISamplerState* samplerState, u8 slot)
+void bnGraphicsD3D11::BindSamplerState(ISamplerState* samplerState, uint slot)
 {
     SamplerStateD3D11* d3dSamplerState = reinterpret_cast<SamplerStateD3D11*>(samplerState);
     if (!d3dSamplerState || !d3dSamplerState->mSamplerState) return;
@@ -1102,14 +1109,14 @@ void bnGraphicsD3D11::ClearRenderTarget(IRenderTarget* target, const float color
     context->ClearRenderTargetView((ID3D11RenderTargetView * )target->GetNativeHandle(), color);
 }
 
-void bnGraphicsD3D11::ClearDepthStencil(IDepthStencil* target, float depth, UINT8 stencil)
+void bnGraphicsD3D11::ClearDepthStencil(IDepthStencil* target, float depth, u8 stencil)
 {
     context->ClearDepthStencilView((ID3D11DepthStencilView*)target->GetNativeHandle(),
         D3D11_CLEAR_DEPTH | D3D11_CLEAR_STENCIL, depth, stencil);
 }
 
 /// TIP - Bind before dispatching!
-void bnGraphicsD3D11::DispatchCompute(UINT x, UINT y, UINT z)
+void bnGraphicsD3D11::DispatchCompute(uint x, uint y, uint z)
 {
     context->Dispatch(x, y, z);
 }
@@ -1159,8 +1166,6 @@ void bnGraphicsD3D11::DrawIndexed(PrimitiveType type, IBuffer* indexBuffer, size
     context->DrawIndexed(static_cast<UINT>(indexCount), static_cast<UINT>(indexOffset), 0);
 
 }
-#endif
-
 
 // todo: re-evaluate this and createbuffer design
 void bnGraphicsD3D11::MapBufferMemory(IBuffer* buffer, void** dataPtr)

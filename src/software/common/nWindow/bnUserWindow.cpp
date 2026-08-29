@@ -9,40 +9,6 @@
 #include "nGUI/skia/win32/SkiaD3D12Renderer.h"
 #include "software/common/Utils.h"
 
-std::string GetLastErrorAsString() {
-    DWORD errorCode = GetLastError();
-    if (errorCode == 0)
-        return "No error";
-
-    LPSTR messageBuffer = nullptr;
-    size_t size = FormatMessageA(
-        FORMAT_MESSAGE_ALLOCATE_BUFFER | FORMAT_MESSAGE_FROM_SYSTEM | FORMAT_MESSAGE_IGNORE_INSERTS,
-        NULL,
-        errorCode,
-        MAKELANGID(LANG_NEUTRAL, SUBLANG_DEFAULT),
-        (LPSTR)&messageBuffer,
-        0,
-        NULL
-    );
-
-    std::string message(messageBuffer, size);
-    LocalFree(messageBuffer);
-    return message;
-}
-
-
-bool iffail(HRESULT res) {
-    if (FAILED(res)) {
-        std::string errorDetails = GetLastErrorAsString();
-        std::cerr << "HRESULT failed: 0x" << std::hex << res
-            << " | Win32 Error: " << errorDetails << std::endl;
-        std::cout << "You should check call stack\n";
-        __debugbreak(); // or std::abort(); to halt the program
-        return true;
-    }
-    else return false;
-}
-
 Data* pData = nullptr;
 Data* vData = nullptr;
 
@@ -121,13 +87,12 @@ void bnUserWindow::init()
         InitGraphicsSystem();
     }
 
-    guiRenderer = new SkiaD3D12Renderer(GPUContextManager::getGaneshContextForWindow(this), (bnGraphicsD3D12*)(gEngineExpl));
+    defaultGUIRenderer = guiManager->createGPURenderer();
+    if (!defaultGUIRenderer.Exists()) defaultGUIRenderer = guiManager->createCPURenderer();
+
     StartUserThread();
-    RECT clientRect;
-    GetClientRect(handle, &clientRect);
-    int width = clientRect.right;
-    int height = clientRect.bottom;
-    ResizeSwapChain(width, height);
+    WindowRect clientRect = windowUtilities::getWindowRect(handle);
+    ResizeSwapChain(clientRect.right, clientRect.bottom);
 }
 
 
@@ -150,7 +115,7 @@ WindowCallbackCodes bnUserWindow::windowCallback(WindowEvent* event)
     case WindowEventType::NonClientAreaCalcSize: {
         if (!event->wordParameter) return WindowCallbackCodes::DEFAULT;
 
-        if (event->wordParameter == TRUE) {
+        if (event->wordParameter == 0) {
             if (titleBar) titleBar->OnNCCalcResult(event->longParameter);
             return WindowCallbackCodes::OKAY; // means we processed it
         }
@@ -169,17 +134,19 @@ WindowCallbackCodes bnUserWindow::windowCallback(WindowEvent* event)
 #endif
 
         if (configuration->logo != nullptr && configuration->logo->getState() == 1) {
-            hIcon = CreateIconFromLogo(configuration->logo->getData().data(), configuration->logo->getData().size());
-            if (hIcon != nullptr) {
-                SendMessage(handle, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
-                SendMessage(handle, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
-            }
-            else {
-                printf("Unsupported Image Format for your logo!");
-            }
+            windowUtilities::setIcon(handle, configuration->logo->getData().data(), configuration->logo->getData().size());
+            // hIcon = CreateIconFromLogo(configuration->logo->getData().data(), configuration->logo->getData().size());
+            // if (hIcon != nullptr) {
+            //     SendMessage(handle, WM_SETICON, ICON_SMALL, (LPARAM)hIcon);
+            //     SendMessage(handle, WM_SETICON, ICON_BIG, (LPARAM)hIcon);
+            // }
+            // else {
+            //     printf("Unsupported Image Format for your logo!");
+            // }
         }
 
-        SetWindowPos(handle, NULL, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER);
+        // windowUtilities::setPosition()
+        // SetWindowPos(handle, NULL, 0, 0, 0, 0, SWP_FRAMECHANGED | SWP_NOMOVE | SWP_NOSIZE | SWP_NOZORDER);
 
         return WindowCallbackCodes::OKAY;
     }
@@ -188,6 +155,7 @@ WindowCallbackCodes bnUserWindow::windowCallback(WindowEvent* event)
         return WindowCallbackCodes::DEFAULT;
     }
         case WindowEventType::NonClientHitTest: {
+#if defined(_WIN32)
         i64 hit = GetDefaultProcedure(event->originalMessage, event->wordParameter, event->longParameter);
         switch (hit) {
         case HTNOWHERE:
@@ -203,10 +171,17 @@ WindowCallbackCodes bnUserWindow::windowCallback(WindowEvent* event)
             return WindowCallbackCodes::CUSTOM_RESULT;
         }
         }
+#elif defined(__linux__)
+        HitTestResult hit = PerformHitTest(event->x, event->y, width, height);
+        if (hit != HitTestResult::Client) {
+            event->customResult = static_cast<i64>(hit);
+            return WindowCallbackCodes::CUSTOM_RESULT;
+        }
+#endif
 
         auto hitRes = titleBar->OnNCHitTest(event->longParameter);
         if (hitRes != HTTRANSPARENT) event->customResult = hitRes;
-        else event->customResult = hit;
+        else event->customResult = (i64)hit;
 
         return WindowCallbackCodes::CUSTOM_RESULT;
     }
@@ -227,17 +202,21 @@ WindowCallbackCodes bnUserWindow::windowCallback(WindowEvent* event)
     }
     case WindowEventType::MouseButtonDown: {
         if (event->button == 0) {
+            i64 hit = event->wordParameter;
+
+#if defined(__linux__)
+            if (hit != static_cast<i64>(HitTestResult::Client) && hit != static_cast<i64>(HitTestResult::Nowhere)) {
+                windowUtilities::SetMoveResize(handle, event);
+                return WindowCallbackCodes::OKAY; // Stop further input processing
+            }
+#endif
             if (event->wordParameter != HTCAPTION) {
                 int button = 2; // middle mouse button index
 
                 currentInputState.mousePressed.insert(button);
                 currentInputState.mouseReleased.erase(button); // in case it was released
-
-                POINT pt;
-                pt.x = event->x;
-                pt.y = event->y;
-                currentInputState.mouseOffset.x = pt.x;
-                currentInputState.mouseOffset.y = pt.y;
+                currentInputState.mouseOffset.x = event->x;
+                currentInputState.mouseOffset.y = event->y;
 
                 UpdateInputThread();
             }
@@ -273,12 +252,8 @@ WindowCallbackCodes bnUserWindow::windowCallback(WindowEvent* event)
 
             currentInputState.mousePressed.insert(button);
             currentInputState.mouseReleased.erase(button); // in case it was released
-
-            POINT pt;
-            pt.x = event->x;
-            pt.y = event->y;
-            currentInputState.mouseOffset.x = pt.x;
-            currentInputState.mouseOffset.y = pt.y;
+            currentInputState.mouseOffset.x = event->x;
+            currentInputState.mouseOffset.y = event->y;
 
             UpdateInputThread();
             }
@@ -345,9 +320,9 @@ WindowCallbackCodes bnUserWindow::windowCallback(WindowEvent* event)
         else return WindowCallbackCodes::DEFAULT;
     }
     case WindowEventType::Resize: {
-        if (event->longParameter != SIZE_MINIMIZED) {
-            UINT newWidth = event->width;
-            UINT newHeight = event->height;
+        if (event->width > 0 && event->height > 0) {
+            uint newWidth = event->width;
+            uint newHeight = event->height;
 
             if (rootDevice) {
                 ResizeSwapChain(newWidth, newHeight);
@@ -706,7 +681,7 @@ inline bool bnUserWindow::InitGraphicsSystem() {
 inline void bnUserWindow::ResizeSwapChain(UINT width, UINT height) {
     if (!rootDevice) return;
     // resize
-    guiRenderer->PrepareForResize();
+    guiRenderer->OnResize();
     UpdateViewports(width, height);
     rootDevice->Resize(width, height);
 }
@@ -813,10 +788,6 @@ inline void bnUserWindow::RenderFrame() {
     }
     
     if (isRenderable) {
-
-       
-
-
         renderReady = true;
         size_t grapSize = 0;
         bool tp = false;
@@ -826,10 +797,7 @@ inline void bnUserWindow::RenderFrame() {
             }
         }
 
-        //if (updateThread.joinable()) {
-        //    std::cout << "PREDRAW!\n";
 
-      
         if (!predraw) {
             // std::cout << "not ready\n";
             if (cachedUserRender.Exists()) {
@@ -955,12 +923,9 @@ inline void bnUserWindow::RenderFrame() {
         utAlpha.alpha = 0;
     }
 
-
     graphics->Submit();
+    defaultGUIRenderer->draw();
     rootDevice->EndFrame();
-    guiRenderer->beginFrame(1920, 1080);
-    guiRenderer->Clear();
-    guiRenderer->endFrame();
 
     if (predraw) {
         workAvailable = true;
@@ -971,7 +936,6 @@ inline void bnUserWindow::RenderFrame() {
         swpText.Resolve(rootDevice->GetSwapchainImage());
 
         advanced = graphics->makeAdvanced();
-
         if (cachedUserRender.Exists()) {
             cachedUserRender.MoveAsPrevious();
             rootDevice->ReleaseTexture(cachedUserRender.GetPreviousResource()); // pushes to GC, old gets nulled
@@ -985,8 +949,8 @@ inline void bnUserWindow::RenderFrame() {
             tbDesc.width = vpMain.width;
             tbDesc.height = signedHeight < 0 ? vpMain.height : signedHeight;
             tbDesc.widthBytes = 0;
-            tbDesc.CpuAccessWrite = true;
-            tbDesc.Dynamic = true;
+            // tbDesc.CpuAccessWrite = true;
+            // tbDesc.Dynamic = true;
 
             graphics->CreateTexture(tbDesc, nullptr, &cachedUserRender);
             ImageCopyDesc ccDesc{};
@@ -998,7 +962,8 @@ inline void bnUserWindow::RenderFrame() {
             ccDesc.extent.width = vpMain.width;
             ccDesc.extent.height = vpMain.height - vpMain.y;
             ccDesc.extent.depth = 1;
-
+            
+            // todo: not very optimal - change to main.
             auto copyCmd = advanced->BeginSingleTimeCommands(&copyTexturePool);
             advanced->CopyImageToImage(copyCmd, &swpText, &cachedUserRender, ccDesc);
             advanced->EndSingleTimeCommands(copyCmd);
@@ -1008,7 +973,7 @@ inline void bnUserWindow::RenderFrame() {
         updateCv.notify_one();
     }
     rootDevice->Present();
-    guiRenderer->DestroyFrameResources();
+    guiRenderer->FinalizeFrames();
 
 
     //if (!updateInProgress && !frozenProcess) {
@@ -1168,7 +1133,10 @@ void bnUserWindow::UserThreadLoop()
         predraw = false;
         if (isWASMInitalized) {
             if (!wasmUpdate) continue;
-        WasmTools::CallByIndex<void>(WasmTools::getLastExecutionEnvironment(), (u32)wasmUpdate, WasmTools::toWASM(WasmTools::getLastExecutionEnvironment(), (void*)wasmID), (u64)nullptr, WasmTools::toWASM(WasmTools::getLastExecutionEnvironment(), (void*)WindowUpdateMessages::ON_UPDATE), WasmTools::toWASM(WasmTools::getLastExecutionEnvironment(), (void*)isRenderable), (u64)0);
+        WasmTools::CallByIndex<void>(
+            (u64)wasmUpdate,nullptr, nullptr,
+            WasmTools::toWASM(WasmTools::getLastContext()->lastContext, WasmTools::getLastContext()->module, (void*)wasmID),
+            (u64)nullptr, WasmTools::toWASM(WasmTools::getLastContext()->lastContext, WasmTools::getLastContext()->module, (void*)WindowUpdateMessages::ON_UPDATE),  WasmTools::toWASM(WasmTools::getLastContext()->lastContext, WasmTools::getLastContext()->module, (void*)isRenderable), (u64)0);
         } else configUser.update(this, configUser.userObject, WindowUpdateMessages::ON_UPDATE, isRenderable, 0);
         predraw = true;
         frozenProcess = false;

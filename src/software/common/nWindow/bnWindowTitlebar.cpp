@@ -1,6 +1,8 @@
 #include "bnWindowTitlebar.h"
 #include "bnWindow.h"
+#include "windowUtilities.h"
 #include "nCommon/MemoryCommands.h"
+#include "nGUI/skia/interfaces/font/IGUIFont.h"
 #include "software/common/Utils.h"
 #ifdef WIN32
 #pragma comment(lib, "usp10.lib")
@@ -20,9 +22,10 @@ struct TitleBarCache {
 
 TitleBarCache titleBarCache;
 
-bnWindowTitlebar::bnWindowTitlebar(bnWindow& window, bnWindowTitlebarConfig& config) : window(window), config(config)
+bnWindowTitlebar::bnWindowTitlebar(bnWindow& window, bnWindowTitlebarConfig& config) : window(window), config(config),
+    mgr()
 {
-   titleFont = mgr.getFont("Segoe UI", 16);
+    titleFont = mgr.getFont("Segoe UI", 16, {});
 }
 
 bnWindowTitlebar::~bnWindowTitlebar()
@@ -30,45 +33,31 @@ bnWindowTitlebar::~bnWindowTitlebar()
     Release();
 }
 
-std::string wstring_to_utf8(const std::wstring& wstr) {
-    if (wstr.empty()) return {};
 
-    int size_needed = WideCharToMultiByte(
-        CP_UTF8, 0, wstr.data(), (int)wstr.size(),
-        nullptr, 0, nullptr, nullptr
-    );
-
-    std::string strTo(size_needed, 0);
-    WideCharToMultiByte(
-        CP_UTF8, 0, wstr.data(), (int)wstr.size(),
-        strTo.data(), size_needed, nullptr, nullptr
-    );
-
-    return strTo;
-}
 
 void bnWindowTitlebar::Release()
 {
     if (cachedLogo) {
         delete cachedLogo.release();
     }
-    BYTE* lastBuffer = titleBarImage.load();
+    u8* lastBuffer = titleBarImage.load();
     if (lastBuffer) {
         delete[] lastBuffer;
         titleBarImage.store(nullptr);
     }
 }
 
-auto makePaint = [](SkColor color, bool aa = true, float strokeWidth = 0.0f, bool fill = true) {
-    SkPaint p;
-    p.setAntiAlias(aa);
-    p.setColor(color);
+auto makePaint = [](Color4f color, bool aa = true, float strokeWidth = 0.0f, bool fill = true) {
+    GUIPaint p;
+    p.isAntiAlias = aa;
+    p.color = color;
+
     if (fill) {
-        p.setStyle(SkPaint::kFill_Style);
+        p.isStroke = false;
     }
     else {
-        p.setStyle(SkPaint::kStroke_Style);
-        p.setStrokeWidth(strokeWidth);
+        p.isStroke = true;
+        p.strokeWidth = strokeWidth;
     }
     return p;
     };
@@ -77,7 +66,7 @@ void bnWindowTitlebar::Update()
 {
     if (!config.enabled) return;
 
-
+#ifdef WIN32
     if (llpMMI) {
         updateLPMMI(llpMMI);
         RECT clientRect;
@@ -101,13 +90,15 @@ void bnWindowTitlebar::Update()
 
         llpMMI = nullptr;
     }
+#else
+    updateLPMMI(llpMMI);
+#endif
 
 
     if (config.properties == HIDEUNFOCUS) {
-        WindowPoint pt = win32Window::getCursorPositionFromWindowSpace(window.handle);
-
+        WindowPoint pt = windowUtilities::getCursorPositionFromWindowSpace(window.handle);
         WindowRect winRect = win32_titlebar_rect(true);
-        bool atTop = win32Window::isPointInRect(&winRect, pt);
+        bool atTop = windowUtilities::isPointInRect(&winRect, pt);
         auto now = std::chrono::steady_clock::now();
 
         if (atTop) {
@@ -155,15 +146,17 @@ void bnWindowTitlebar::Update()
         framesAfterFrozen++;
     }
 
-    SetWindowTextW(window.handle, title.c_str());
+    windowUtilities::setTitle(window.handle, title.c_str());
+    // SetWindowTextW(window.handle, title.c_str());
+#ifdef WIN32
     auto crBorderColor = RGB(config.borderColor.r, config.borderColor.g, config.borderColor.b);
-
     DwmSetWindowAttribute(
         window.handle,
         DWMWA_BORDER_COLOR,
         &crBorderColor,
         sizeof(crBorderColor)
     );
+#endif
 
     HoverFadeState oldMin = minimizeFade;
     HoverFadeState oldMax = maximizeFade;
@@ -174,10 +167,10 @@ void bnWindowTitlebar::Update()
     UpdateFade(maximizeFade);
     UpdateFade(closeFade);
     if (isHidden && hideOffset == 1.0f) {
-        titleBarBit = {};
-        UpdateBuffer(nullptr, 0);
+        // titleBarBit = {};
+        // UpdateBuffer(nullptr, 0);
         return; // Waste of resources
-     }
+    }
 
     WindowRect title_bar_rect = win32_titlebar_rect();
     if (!hasChanged()) return;
@@ -190,50 +183,48 @@ void bnWindowTitlebar::Update()
     titleBarCache.lastCloseAlpha = closeFade.alpha;
     titleBarCache.lastPressedButton = title_bar_pressed_button;
 
-    SkImageInfo info = SkImageInfo::Make(
-        (title_bar_rect.right - title_bar_rect.left),
-        (title_bar_rect.bottom - title_bar_rect.top),
-        kBGRA_8888_SkColorType,   // matches Win32 DIB
-        kPremul_SkAlphaType
-    );
+    // SkImageInfo info = SkImageInfo::Make(
+    //     (title_bar_rect.right - title_bar_rect.left),
+    //     (title_bar_rect.bottom - title_bar_rect.top),
+    //     kBGRA_8888_SkColorType,   // matches Win32 DIB
+    //     kPremul_SkAlphaType
+    // );
+    //
+    // size_t rowBytes = info.minRowBytes();
+    // std::vector<uint8_t> pixels(rowBytes * (title_bar_rect.bottom - title_bar_rect.top));
 
-    size_t rowBytes = info.minRowBytes();
-    std::vector<uint8_t> pixels(rowBytes * (title_bar_rect.bottom - title_bar_rect.top));
-
-    auto canvas = SkCanvas::MakeRasterDirect(
-        info,
-        pixels.data(),
-        rowBytes
-    );
-
+    auto renderer = window.guiManager->createGPURenderer();
+    auto surface = renderer->createFrameSurface(title_bar_rect);
+    auto canvas = surface->GetCanvas();
     if (!canvas) return;
 
-    COLORREF title_bar_color = RGB(config.backgroundColor.r, config.backgroundColor.g, config.backgroundColor.b);
-    COLORREF title_bar_hover_color = RGB(config.buttonHoverColor.r, config.buttonHoverColor.g, config.buttonHoverColor.b);
-    COLORREF title_bar_hover_pressed_color = RGB(config.buttonPressedColor.r, config.buttonPressedColor.g, config.buttonPressedColor.b);
+    Color4f title_bar_color = {config.backgroundColor.r, config.backgroundColor.g, config.backgroundColor.b};
+    Color4f title_bar_hover_color = {config.buttonHoverColor.r, config.buttonHoverColor.g, config.buttonHoverColor.b};
+    Color4f title_bar_hover_pressed_color = {config.buttonPressedColor.r, config.buttonPressedColor.g, config.buttonPressedColor.b};
 
-    canvas->clear({ config.backgroundColor.r / 255, config.backgroundColor.g / 255, config.backgroundColor.b / 255, 255 });
+    canvas->Clear({ config.backgroundColor.r / 255, config.backgroundColor.g / 255, config.backgroundColor.b / 255, 255 });
     //canvas->drawTextBlob()f
     CustomTitleBarButtonRects button_rects = win32_get_title_bar_button_rects(&title_bar_rect);
 
-    UINT dpi = GetDpiForWindow(window.handle);
+    uint dpi = windowUtilities::getDPIOfWindow(window.handle);
     int icon_dimension = win32_dpi_scale(10, dpi);
 
     if (config.sysButtons & SysButtonFlags::MINIMIZE) {
         if (minimizeFade.alpha > 0.0f) {
-            SkColor c = BlendColor(
+            Color4f c = BlendColor(
                 title_bar_pressed_button == CustomTitleBarPressedButton_Minimize
                 ? title_bar_hover_pressed_color
                 : title_bar_hover_color,
                 minimizeFade.alpha);
 
-            SkRect r = SkRect::MakeLTRB(
+            UXRect r = {
                 (float)button_rects.minimize.left,
                 (float)button_rects.minimize.top,
                 (float)button_rects.minimize.right,
-                (float)button_rects.minimize.bottom);
+                (float)button_rects.minimize.bottom
+            };
 
-            canvas->drawRect(r, makePaint(c));
+            canvas->DrawRect(r, makePaint(c));
         }
 
         WindowRect icon_rect_min;
@@ -241,36 +232,33 @@ void bnWindowTitlebar::Update()
         icon_rect_min.bottom = 1;
         win32_center_rect_in_rect(&icon_rect_min, &button_rects.minimize);
 
-        SkRect iconRect = SkRect::MakeLTRB(
+        UXRect iconRect = {
             (float)icon_rect_min.left,
             (float)icon_rect_min.top,
             (float)icon_rect_min.right,
-            (float)icon_rect_min.bottom);
+            (float)icon_rect_min.bottom
+        };
 
-        SkColor textCol = SkColorSetRGB(
-            255,
-            255,
-            255);
-
-        canvas->drawRect(iconRect, makePaint(textCol));
+        Color4f textCol{1, 1,1};
+        canvas->DrawRect(iconRect, makePaint(textCol));
     }
 
     // Maximize button
     if (config.sysButtons & SysButtonFlags::MAXIMIZE) {
         if (maximizeFade.alpha > 0.0f) {
-            SkColor c = BlendColor(
+            Color4f c = BlendColor(
                 title_bar_pressed_button == CustomTitleBarPressedButton_Maximize
                 ? title_bar_hover_pressed_color
                 : title_bar_hover_color,
                 maximizeFade.alpha);
 
-            SkRect r = SkRect::MakeLTRB(
+            UXRect r = {
                 (float)button_rects.maximize.left,
                 (float)button_rects.maximize.top,
                 (float)button_rects.maximize.right,
-                (float)button_rects.maximize.bottom);
-
-            canvas->drawRect(r, makePaint(c));
+                (float)button_rects.maximize.bottom
+            };
+            canvas->DrawRect(r, makePaint(c));
         }
 
         WindowRect icon_rect_max;
@@ -278,64 +266,62 @@ void bnWindowTitlebar::Update()
         icon_rect_max.bottom = icon_dimension;
         win32_center_rect_in_rect(&icon_rect_max, &button_rects.maximize);
 
-        SkRect iconRect = SkRect::MakeLTRB(
+        UXRect iconRect = {
             (float)icon_rect_max.left,
             (float)icon_rect_max.top,
             (float)icon_rect_max.right,
-            (float)icon_rect_max.bottom);
+            (float)icon_rect_max.bottom
+        };
 
         if (win32_window_is_maximized()) {
-            SkRect maximizedRect = SkRect::MakeXYWH(
-                (float)icon_rect_max.left + WIN32_MAXIMIZED_RECTANGLE_OFFSET,
-                (float)icon_rect_max.top - WIN32_MAXIMIZED_RECTANGLE_OFFSET,
+            UXRect maximizedRect = UXRect::FromXYWH(
+                (float)icon_rect_max.left + 2,
+                (float)icon_rect_max.top - 2,
                 (float)(icon_rect_max.right - icon_rect_max.left),
                 (float)(icon_rect_max.bottom - icon_rect_max.top));
 
-            canvas->drawRect(maximizedRect, makePaint(SK_ColorWHITE, false, 1.0f, false));
+            canvas->DrawRect(maximizedRect, makePaint({1,1,1}, false, 1.0f, false));
 
-            SkColor bColor2 = BlendColor(
+            Color4f bColor2 = BlendColor(
                 title_bar_hovered_button == CustomTitleBarHoveredButton_Maximize
                 ? title_bar_hover_color
                 : title_bar_color,
                 1.0f);
 
-            SkColor fillCol = (title_bar_pressed_button == CustomTitleBarPressedButton_Maximize)
-                ? SkColorSetRGB(
-                    GetRValue(title_bar_hover_pressed_color),
-                    GetGValue(title_bar_hover_pressed_color),
-                    GetBValue(title_bar_hover_pressed_color))
-                : bColor2;
+            Color4f fillCol = (title_bar_pressed_button == CustomTitleBarPressedButton_Maximize)
+                             ? title_bar_hover_pressed_color : bColor2;
 
-            canvas->drawRect(iconRect, makePaint(fillCol));
+            canvas->DrawRect(iconRect, makePaint(fillCol));
         }
 
         if (title_bar_pressed_button == CustomTitleBarPressedButton_Maximize) {
-            canvas->drawRect(iconRect, makePaint(SK_ColorWHITE));
+            canvas->DrawRect(iconRect, makePaint({1,1,1}));
         }
 
-        canvas->drawRect(iconRect, makePaint(SK_ColorWHITE, false, 1.0f, false));
+        canvas->DrawRect(iconRect, makePaint({1,1,1}, false, 1.0f, false));
     }
 
     // Close button
     if (config.sysButtons & SysButtonFlags::CLOSE) {
         if (closeFade.alpha > 0.0f) {
-            SkColor c = BlendColor(
+            Color4f c = BlendColor(
                 title_bar_pressed_button == CustomTitleBarPressedButton_Close
-                ? RGB(config.closeButtonPressedColor.r,
+                ? Color4f{config.closeButtonPressedColor.r,
                     config.closeButtonPressedColor.g,
-                    config.closeButtonPressedColor.b)
-                : RGB(config.closeButtonColor.r,
+                    config.closeButtonPressedColor.b}
+                : Color4f{config.closeButtonColor.r,
                     config.closeButtonColor.g,
-                    config.closeButtonColor.b),
+                    config.closeButtonColor.b},
                 closeFade.alpha);
 
-            SkRect r = SkRect::MakeLTRB(
+            UXRect r = {
                 (float)button_rects.close.left,
                 (float)button_rects.close.top,
                 (float)button_rects.close.right,
-                (float)button_rects.close.bottom);
+                (float)button_rects.close.bottom
+            };
 
-            canvas->drawRect(r, makePaint(c));
+            canvas->DrawRect(r, makePaint(c));
         }
 
         WindowRect icon_rect_close;
@@ -343,36 +329,21 @@ void bnWindowTitlebar::Update()
         icon_rect_close.bottom = icon_dimension;
         win32_center_rect_in_rect(&icon_rect_close, &button_rects.close);
 
-        SkPaint pen = makePaint(SK_ColorWHITE, true, 1.5f, false);
-        canvas->drawLine(
-            (float)icon_rect_close.left, (float)icon_rect_close.top,
-            (float)icon_rect_close.right, (float)icon_rect_close.bottom,
+        GUIPaint pen = makePaint({1,1,1}, true, 1.5f, false);
+        canvas->DrawLine(
+            {(float)icon_rect_close.left, (float)icon_rect_close.top},
+            {(float)icon_rect_close.right, (float)icon_rect_close.bottom},
             pen);
 
-        canvas->drawLine(
-            (float)icon_rect_close.left, (float)icon_rect_close.bottom,
-            (float)icon_rect_close.right, (float)icon_rect_close.top,
+        canvas->DrawLine(
+            {(float)icon_rect_close.left, (float)icon_rect_close.bottom},
+            {(float)icon_rect_close.right, (float)icon_rect_close.top},
             pen);
     }
 
-    //if (!fontTypeFace) {
-    //    printf("Typeface is null!\n");
-    //}
-
-    //if (!fontTypeFace->countGlyphs()) {
-    //    printf("Typeface has no glyphs!\n");
-    //}
-
-
-    SkPaint textPaint;
-    textPaint.setColor(SkColorSetARGB(
-        255,
-        255,
-        255,
-        255
-    ));
-    textPaint.setAntiAlias(true);  // smooth text
-
+    GUIPaint textPaint;
+    textPaint.color = {1,1,1};
+    textPaint.isAntiAlias = true;
 
     int icon_right = !window.hIcon ? 5 : 5 + 32 + win32_dpi_scale(5, dpi);
     int button_left = button_rects.getFirstAvailable().left - win32_dpi_scale(5, dpi);
@@ -383,24 +354,22 @@ void bnWindowTitlebar::Update()
     int available_width = text_right - text_left;
     int title_height = title_bar_rect.bottom - title_bar_rect.top;
 
-    // Skia uses float for coordinates
-    SkRect textRect = SkRect::MakeLTRB(
-        static_cast<float>(icon_right),
-        static_cast<float>(title_bar_rect.top),
-        static_cast<float>(button_left),
-        static_cast<float>(title_bar_rect.bottom)
-    );
+    // // Skia uses float for coordinates
+    // SkRect textRect = SkRect::MakeLTRB(
+    //     static_cast<float>(icon_right),
+    //     static_cast<float>(title_bar_rect.top),
+    //     static_cast<float>(button_left),
+    //     static_cast<float>(title_bar_rect.bottom)
+    // );
 
     auto u16 = wstring_to_utf16(title);
-
-
   //  if (textWidth > available_width) {
-    if (titleFont.measureText(u16.c_str(), u16.size() * sizeof(char16_t), SkTextEncoding::kUTF16) > available_width) {
+    if (titleFont->measureText(u16.c_str(), u16.size() * sizeof(char16_t), TextEncoding::kUTF16) > available_width) {
         // truncate
-        float ellipsisWidth = titleFont.measureText(u"\u2026", sizeof(char16_t), SkTextEncoding::kUTF16);
+        float ellipsisWidth = titleFont->measureText(u"\u2026", sizeof(char16_t), TextEncoding::kUTF16);
         size_t len = u16.size();
         while (len > 0) {
-            auto w = titleFont.measureText(u16.data(), len * sizeof(char16_t), SkTextEncoding::kUTF16);
+            auto w = titleFont->measureText(u16.data(), len * sizeof(char16_t), TextEncoding::kUTF16);
             if (w + ellipsisWidth <= available_width) break;
             len--;
         }
@@ -413,26 +382,26 @@ void bnWindowTitlebar::Update()
     }
    // }
 
-        SkRect bounds;
-        titleFont.measureText(u16.data(), u16.size() * sizeof(char16_t), SkTextEncoding::kUTF16, &bounds);
+    WindowRect bounds;
+    titleFont->measureText(u16.data(), u16.size() * sizeof(char16_t), TextEncoding::kUTF16, &bounds);
 
-        // Horizontal centering
-        float textWidth = bounds.width();
-        float x = !window.hIcon ? 4 : text_left + (available_width - textWidth) / 2.0f;
+    // Horizontal centering
+    float textWidth = bounds.GetWidth();
+    float x = !window.hIcon ? 4 : text_left + (available_width - textWidth) / 2.0f;
 
-        // Vertical centering
-        float textHeight = bounds.height();
-        float y = title_bar_rect.top + (title_height - textHeight) / 2.0f - bounds.top();
+    // Vertical centering
+    float textHeight = bounds.GetHeight();
+    float y = title_bar_rect.top + (title_height - textHeight) / 2.0f - bounds.top;
 
-    auto blob = SkTextBlob::MakeFromText(
+    auto blob = mgr.createTextBlob(
         u16.data(),
         u16.size() * sizeof(char16_t),
         titleFont,
-        SkTextEncoding::kUTF16
+        TextEncoding::kUTF16
     );
 
-        if (available_width > 15) {
-        canvas->drawTextBlob(blob, x, y, textPaint);
+    if (available_width > 15) {
+        canvas->DrawTextBlob(blob, {x, y}, textPaint);
     }
 
     if (window.configuration->logo != nullptr && window.configuration->logo->getState() == 1) {
@@ -457,7 +426,7 @@ void bnWindowTitlebar::Update()
             float size = title_bar_rect.bottom - title_bar_rect.top;
             float wh = std::min(size, 32.0f);
 
-            canvas->drawImageRect(
+            canvas->DrawImageRect(
                 cachedLogo,
                 SkRect::MakeXYWH(5, 0, wh, wh),
                 sampling,
@@ -468,30 +437,31 @@ void bnWindowTitlebar::Update()
     else {
        // printf("Unsupported Image Format!");
     }
-
-    titleBarBit.bmType = 0;  // 0 = device-independent bitmap
-    titleBarBit.bmWidth = (title_bar_rect.right - title_bar_rect.left);   // width of the bitmap
-    titleBarBit.bmHeight = (title_bar_rect.bottom - title_bar_rect.top); // height
-    titleBarBit.bmWidthBytes = rowBytes;
-    titleBarBit.bmPlanes = 1;
-    titleBarBit.bmBitsPixel = 32;
-    titleBarBit.bmBits = pixels.data();
-
-    if (flickerEffect) {
-        const size_t pixelCount = pixels.size() / 4; // 4 bytes per pixel
-
-        for (size_t i = 0; i < pixelCount; ++i) {
-            size_t offset = i * 4;
-            // Windows bitmaps are usually BGRA, adjust if needed
-            pixels[offset + 0] = 255 - pixels[offset + 0]; // B
-            pixels[offset + 1] = 255 - pixels[offset + 1]; // G
-            pixels[offset + 2] = 255 - pixels[offset + 2]; // R
-            // Alpha remains the same
-            // pixels[offset + 3] = pixels[offset + 3]; 
-        }
-    }
-
-    UpdateBuffer(pixels.data(), pixels.size());
+    renderer->draw();
+    //
+    // titleBarBit.bmType = 0;  // 0 = device-independent bitmap
+    // titleBarBit.bmWidth = (title_bar_rect.right - title_bar_rect.left);   // width of the bitmap
+    // titleBarBit.bmHeight = (title_bar_rect.bottom - title_bar_rect.top); // height
+    // titleBarBit.bmWidthBytes = rowBytes;
+    // titleBarBit.bmPlanes = 1;
+    // titleBarBit.bmBitsPixel = 32;
+    // titleBarBit.bmBits = pixels.data();
+    //
+    // if (flickerEffect) {
+    //     const size_t pixelCount = pixels.size() / 4; // 4 bytes per pixel
+    //
+    //     for (size_t i = 0; i < pixelCount; ++i) {
+    //         size_t offset = i * 4;
+    //         // Windows bitmaps are usually BGRA, adjust if needed
+    //         pixels[offset + 0] = 255 - pixels[offset + 0]; // B
+    //         pixels[offset + 1] = 255 - pixels[offset + 1]; // G
+    //         pixels[offset + 2] = 255 - pixels[offset + 2]; // R
+    //         // Alpha remains the same
+    //         // pixels[offset + 3] = pixels[offset + 3];
+    //     }
+    // }
+    //
+    // UpdateBuffer(pixels.data(), pixels.size());
 
 }
 
@@ -499,21 +469,23 @@ void bnWindowTitlebar::OnNCMouseMove()
 {
     if (!config.enabled) return;
     mouseOnBar = true; 
-    WindowPoint cursor_point = win32Window::getCursorPositionFromWindowSpace(window.handle);
-    HCURSOR hCursor = LoadCursor(nullptr, IDC_ARROW);
-    SetCursor(hCursor);
+    WindowPoint cursor_point = windowUtilities::getCursorPositionFromWindowSpace(window.handle);
+    auto cursor = windowUtilities::createCursor(window.handle, SystemCursorShape::Arrow);
+    windowUtilities::setCursor(window.handle, cursor);
+    // HCURSOR hCursor = LoadCursor(nullptr, IDC_ARROW);
+    // SetCursor(hCursor);
 
     WindowRect title_bar_rect = win32_titlebar_rect();
     CustomTitleBarButtonRects button_rects = win32_get_title_bar_button_rects(&title_bar_rect);
 
     CustomTitleBarHoveredButton new_hovered_button = CustomTitleBarHoveredButton_None;
-    if (win32Window::isPointInRect(&button_rects.close, cursor_point)) {
+    if (windowUtilities::isPointInRect(&button_rects.close, cursor_point)) {
         new_hovered_button = CustomTitleBarHoveredButton_Close;
     }
-    else if (win32Window::isPointInRect(&button_rects.minimize, cursor_point)) {
+    else if (windowUtilities::isPointInRect(&button_rects.minimize, cursor_point)) {
         new_hovered_button = CustomTitleBarHoveredButton_Minimize;
     }
-    else if (win32Window::isPointInRect(&button_rects.maximize, cursor_point)) {
+    else if (windowUtilities::isPointInRect(&button_rects.maximize, cursor_point)) {
         new_hovered_button = CustomTitleBarHoveredButton_Maximize;
     }
 
@@ -529,13 +501,11 @@ void bnWindowTitlebar::OnNCMouseMove()
 
         title_bar_hovered_button = new_hovered_button;
     }
-
-  
     window.tBarChanged = true;
 
     if (new_hovered_button != CustomTitleBarHoveredButton_None) {
-        TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE | TME_NONCLIENT, window.handle, 0 };
-        TrackMouseEvent(&tme);
+        // TRACKMOUSEEVENT tme = { sizeof(tme), TME_LEAVE | TME_NONCLIENT, window.handle, 0 };
+        // TrackMouseEvent(&tme);
     }
 }
 
@@ -571,7 +541,7 @@ int bnWindowTitlebar::OnNCMouseButtonDown()
         return 0;
     }
 
-    InvalidateRect(window.handle, NULL, FALSE);
+    // InvalidateRect(window.handle, NULL, FALSE);
     title_bar_pressed_button = CustomTitleBarPressedButton_None;
     window.tBarChanged = true;
     return 1;
@@ -582,19 +552,28 @@ void bnWindowTitlebar::OnNCMouseButtonUp()
     if (!config.enabled) return;
     title_bar_pressed_button = CustomTitleBarPressedButton_None;
     window.firstFrame = true;
-    InvalidateRect(window.handle, NULL, FALSE);
+    // InvalidateRect(window.handle, NULL, FALSE);
 
     if (title_bar_hovered_button == CustomTitleBarHoveredButton_Close) {
-        PostMessageW(window.handle, WM_CLOSE, 0, 0);
+        // PostMessageW(window.handle, WM_CLOSE, 0, 0);
         return;
     }
     else if (title_bar_hovered_button == CustomTitleBarHoveredButton_Minimize) {
-        ShowWindow(window.handle, SW_MINIMIZE);
+        windowUtilities::hideWindow(window.handle);
+        // ShowWindow(window.handle, SW_MINIMIZE);
         return;
     }
     else if (title_bar_hovered_button == CustomTitleBarHoveredButton_Maximize) {
-        int mode = win32_window_is_maximized() ? SW_NORMAL : SW_MAXIMIZE;
-        ShowWindow(window.handle, mode);
+        // int mode = win32_window_is_maximized() ? SW_NORMAL : SW_MAXIMIZE;
+        if (win32_window_is_maximized())
+        {
+            windowUtilities::showWindow(window.handle);
+        } else
+        {
+            windowUtilities::maximizeWindow(window.handle);
+        }
+
+        // ShowWindow(window.handle, mode);
         return;
     }
 
@@ -603,44 +582,44 @@ void bnWindowTitlebar::OnNCMouseButtonUp()
 void bnWindowTitlebar::OnNCRMouseButtonUp(LPARAM l_param)
 {
     if (!config.enabled) return;
-        BOOL isMaximized = IsZoomed(window.handle);
-        MENUITEMINFO menu_item_info = {};
-        menu_item_info.cbSize = sizeof(menu_item_info);
-        menu_item_info.fMask = MIIM_STATE;
+    BOOL isMaximized = IsZoomed(window.handle);
+    MENUITEMINFO menu_item_info = {};
+    menu_item_info.cbSize = sizeof(menu_item_info);
+    menu_item_info.fMask = MIIM_STATE;
 
-        HMENU sys_menu = GetSystemMenu(window.handle, false);
+    HMENU sys_menu = GetSystemMenu(window.handle, false);
 
-        // First, check if our item already exists by scanning for the label
-        const UINT_PTR customItemID = 1; // use a unique, harmless ID
-        MENUITEMINFOW mii = {};
-        mii.cbSize = sizeof(mii);
-        mii.fMask = MIIM_STRING;
-        wchar_t buffer[256];
-        mii.dwTypeData = buffer;
-        mii.cch = ARRAYSIZE(buffer);
+    // First, check if our item already exists by scanning for the label
+    const UINT_PTR customItemID = 1; // use a unique, harmless ID
+    MENUITEMINFOW mii = {};
+    mii.cbSize = sizeof(mii);
+    mii.fMask = MIIM_STRING;
+    wchar_t buffer[256];
+    mii.dwTypeData = buffer;
+    mii.cch = ARRAYSIZE(buffer);
 
-        bool found = false;
-        for (int i = 0; GetMenuItemInfoW(sys_menu, i, TRUE, &mii); ++i) {
-            if (wcscmp(buffer, L"--- BORA ---") == 0) {
-                found = true;
-                break;
-            }
+    bool found = false;
+    for (int i = 0; GetMenuItemInfoW(sys_menu, i, TRUE, &mii); ++i) {
+        if (wcscmp(buffer, L"--- BORA ---") == 0) {
+            found = true;
+            break;
         }
+    }
 
-        if (!found) {
-            InsertMenuW(sys_menu, 0, MF_BYPOSITION | MF_STRING | MF_DISABLED, customItemID, L"--- BORA ---");
-        }
+    if (!found) {
+        InsertMenuW(sys_menu, 0, MF_BYPOSITION | MF_STRING | MF_DISABLED, customItemID, L"--- BORA ---");
+    }
 
-        set_menu_item_state(sys_menu, &menu_item_info, SC_RESTORE, isMaximized);
-        set_menu_item_state(sys_menu, &menu_item_info, SC_MOVE, !isMaximized);
-        set_menu_item_state(sys_menu, &menu_item_info, SC_SIZE, !isMaximized);
-        set_menu_item_state(sys_menu, &menu_item_info, SC_MINIMIZE, (config.sysButtons & SysButtonFlags::MINIMIZE) != 0);
-        set_menu_item_state(sys_menu, &menu_item_info, SC_MAXIMIZE, (config.sysButtons & SysButtonFlags::MAXIMIZE) != 0 && !isMaximized);
-        set_menu_item_state(sys_menu, &menu_item_info, SC_CLOSE, (config.sysButtons & SysButtonFlags::CLOSE) != 0);
-        BOOL result = TrackPopupMenu(sys_menu, TPM_RETURNCMD, GET_X_PARAM(l_param), GET_Y_PARAM(l_param), 0, window.handle, NULL);
-        if (result != 0) {
-            PostMessage(window.handle, WM_SYSCOMMAND, result, 0);
-        }
+    set_menu_item_state(sys_menu, &menu_item_info, SC_RESTORE, isMaximized);
+    set_menu_item_state(sys_menu, &menu_item_info, SC_MOVE, !isMaximized);
+    set_menu_item_state(sys_menu, &menu_item_info, SC_SIZE, !isMaximized);
+    set_menu_item_state(sys_menu, &menu_item_info, SC_MINIMIZE, (config.sysButtons & SysButtonFlags::MINIMIZE) != 0);
+    set_menu_item_state(sys_menu, &menu_item_info, SC_MAXIMIZE, (config.sysButtons & SysButtonFlags::MAXIMIZE) != 0 && !isMaximized);
+    set_menu_item_state(sys_menu, &menu_item_info, SC_CLOSE, (config.sysButtons & SysButtonFlags::CLOSE) != 0);
+    BOOL result = TrackPopupMenu(sys_menu, TPM_RETURNCMD, GET_X_PARAM(l_param), GET_Y_PARAM(l_param), 0, window.handle, NULL);
+    if (result != 0) {
+        PostMessage(window.handle, WM_SYSCOMMAND, result, 0);
+    }
     }
 
 LRESULT bnWindowTitlebar::OnNCHitTest(LPARAM l_param)
@@ -650,7 +629,7 @@ LRESULT bnWindowTitlebar::OnNCHitTest(LPARAM l_param)
         return HTMAXBUTTON;
     }
 
-    UINT dpi = GetDpiForWindow(window.handle);
+    uint dpi = windowUtilities::getDPIOfWindow(window.handle);
     int frame_y = GetSystemMetricsForDpi(SM_CYFRAME, dpi);
     int padding = GetSystemMetricsForDpi(SM_CXPADDEDBORDER, dpi);
     POINT cursor_point = { GET_X_PARAM(l_param), GET_Y_PARAM(l_param) };
@@ -711,13 +690,9 @@ void bnWindowTitlebar::OnNCMouseLeave()
     }
 }
 
-SkColor bnWindowTitlebar::BlendColor(COLORREF baseColor, float alpha)
+Color4f bnWindowTitlebar::BlendColor(Color4f baseColor, float alpha)
 {
-    BYTE r = GetRValue(baseColor);
-    BYTE g = GetGValue(baseColor);
-    BYTE b = GetBValue(baseColor);
-    BYTE a = static_cast<BYTE>(alpha * 255);
-    return SkColorSetARGB(a, r, g, b);
+    return {baseColor.red, baseColor.green, baseColor.blue, alpha};
 }
 
 WindowRect bnWindowTitlebar::win32_fake_shadow_rect(HWND handle)
@@ -810,13 +785,13 @@ inline bnWindowTitlebar::CustomTitleBarButtonRects bnWindowTitlebar::win32_get_t
     //button_rects.minimize.right -= button_width;
     //return button_rects;
 
-    UINT dpi = GetDpiForWindow(window.handle);
+    uint dpi = windowUtilities::getDPIOfWindow(window.handle);
     CustomTitleBarButtonRects button_rects{};
     int button_width = win32_dpi_scale(47, dpi);
 
     // Start at the right edge of the title bar
     WindowRect current = *title_bar_rect;
-    current.top += WIN32_FAKE_SHADOW_HEIGHT;
+    current.top += 1; //WIN32_FAKE_SHADOW_HEIGHT;
     current.left = current.right - button_width;
 
     // Helper lambda to assign and move left
@@ -843,22 +818,31 @@ inline bnWindowTitlebar::CustomTitleBarButtonRects bnWindowTitlebar::win32_get_t
 
 bool bnWindowTitlebar::win32_window_is_maximized()
 {
-    WINDOWPLACEMENT placement = { 0 };
-    placement.length = sizeof(WINDOWPLACEMENT);
-    if (GetWindowPlacement(window.handle, &placement)) {
-        return placement.showCmd == SW_SHOWMAXIMIZED;
-    }
+    return windowUtilities::isMaximized(window.handle);
+    // WINDOWPLACEMENT placement = { 0 };
+    // placement.length = sizeof(WINDOWPLACEMENT);
+    // if (GetWindowPlacement(window.handle, &placement)) {
+    //     return placement.showCmd == SW_SHOWMAXIMIZED;
+    // }
     return false;
 }
 
 WindowRect bnWindowTitlebar::win32_titlebar_rect(bool noHideOffset)
 {
+#ifdef WIN32
     WindowSize title_bar_size = win32Window::getThemePartSize(window.handle, L"WINDOW", WP_CAPTION, CS_ACTIVE);
-    UINT dpi = win32Window::getDPIOfWindow(window.handle);
+#else
+    WindowSize title_bar_size = {
+        .cx = 0, // Fits window width automatically
+        .cy = 32
+    };
+#endif
+
+    u8 dpi = windowUtilities::getDPIOfWindow(window.handle);
     const int top_and_bottom_borders = 2;
     int height = win32_dpi_scale(title_bar_size.cy, dpi) + top_and_bottom_borders;
 
-    WindowRect rect = win32Window::getWindowRect(window.handle);
+    WindowRect rect = windowUtilities::getWindowRect(window.handle);
     if (noHideOffset) {
         rect.bottom = rect.top + height;
     }
@@ -896,7 +880,7 @@ void bnWindowTitlebar::UpdateHidePos()
     // Apply easing curve
   
 }
-
+#ifdef WIN32
 void bnWindowTitlebar::updateLPMMI(LPMINMAXINFO lpMMI)
 {
     auto titleRect = win32_titlebar_rect();
@@ -948,161 +932,167 @@ void bnWindowTitlebar::updateLPMMI(LPMINMAXINFO lpMMI)
             }
         }
     }
-
-    
 }
-
-void bnWindowTitlebar::RenderFrame(bnGraphics* graphics, GraphicsAdvanced* advanced, GraphicAdvancedCommandList* list,
-    ResourceHandle<IInputLayout>* inputLayout,
-    ResourceHandle<ISamplerState>* samplerState,
-    ResourceHandle<IBlendState>* blending,
-    ResourceHandle<IRasterizerState>* rast,
-    ResourceHandle<IDepthStencilState>* depth,ResourceHandle<ICommandPool>* copyTexturePool,
-    ResourceHandle<IShader>* vertexShader,
-    ResourceHandle<IShader>* pixelShader, ResourceHandle<IViewPort>* viewport,
-    ResourceHandle<IDescriptorPool>* dPool,
-    ResourceHandle<IDescriptorSetLayout>* dSetLayout
-)
-{   
-    graphics->PushGroup("Title Bar Render");
-    bool changed = this->changed;
-
-    if (changed) {
-        graphics->ReleaseTexture(&titleBarTexture);
-        graphics->ReleaseBuffer(&titleBarVertice);
-    }
-
-    auto title_bar_rect = win32_titlebar_rect();
-
-    if (titleBarBit.bmWidth == 0) return;
-
-    if (config.enabled) {
-        if (titleBarBit.bmWidth != 0) {
-
-            
-            bool exists = titleBarTexture.Exists();
-            if (!exists && changed) {
-                TextureDesc tbDesc;
-                tbDesc.format = window.choice == VULKAN ? TextureFormat::BGRA8_UNorm_SRGB : TextureFormat::BGRA8_UNorm;
-                tbDesc.width = titleBarBit.bmWidth;
-                tbDesc.height = titleBarBit.bmHeight;
-                tbDesc.widthBytes = titleBarBit.bmWidthBytes;
-                tbDesc.CpuAccessWrite = true;
-
-                graphics->CreateTexture(tbDesc, nullptr, &titleBarTexture);
-
-            }
-        }
-
-        if (!titleBarVertice.Exists() && changed) {
-            RECT rect;
-            GetClientRect(window.handle, &rect);
-
-            float aspectRatio = (float)titleBarBit.bmHeight / ((rect.bottom - rect.top) - (float)(title_bar_rect.bottom - title_bar_rect.top));
-            float titlebarRatio = (float)titleBarBit.bmHeight / ((rect.bottom - rect.top) - (float)(title_bar_rect.bottom - title_bar_rect.top));
-
-            Vertex vertices[] = {
-                { -1.0f, 1.0f,                          0.0f, 0.0f, 0.0f }, // top-left
-                {  1.0f, 1.0f,                          0.0f, 1.0f, 0.0f }, // top-right
-                { -1.0f, (1.0f - 2.0f * titlebarRatio), 0.0f, 0.0f, 1.0f }, // bottom-left
-                {  1.0f, (1.0f - 2.0f * titlebarRatio), 0.0f, 1.0f, 1.0f }, // bottom-right
-            };
-
-            BufferDesc tbBufferDesc;
-            tbBufferDesc.type = BufferType::Vertex;
-            tbBufferDesc.size = std::size(vertices);
-            tbBufferDesc.byteWidth = sizeof(Vertex) * std::size(vertices);
-            tbBufferDesc.stride = sizeof(Vertex);
-            tbBufferDesc.dynamic = false;
-
-            graphics->CreateBuffer(tbBufferDesc, &vertices, &titleBarVertice);
-        }
-
-    }
-
-
-    if (changed) {
-        BufferDesc stagingDesc = {};
-        stagingDesc.size = titleBarBit.bmWidthBytes * titleBarBit.bmHeight * 4;
-        stagingDesc.type = BufferType::Staging;
-
-        if (!stagingBuffer.Exists()) graphics->CreateBuffer(stagingDesc, nullptr, &stagingBuffer);
-        advanced->MapBufferMemory(&stagingBuffer, &data);
-
-        for (int y = 0; y < titleBarBit.bmHeight; ++y) {
-            MemoryCommands::Copy(advanced->getCommands(),
-                &data,
-                titleBarImage + y * titleBarBit.bmWidthBytes,
-                titleBarBit.bmWidthBytes,
-                y * titleBarBit.bmWidthBytes);
-        }
-
-        advanced->UnmapBufferMemory(&stagingBuffer);
-
-        BufferImageCopyDesc region{};
-        region.imageSubresource.aspectMask = IMAGE_ASPECT_COLOR_BIT;
-        region.imageSubresource.layerCount = 1;
-
-        region.imageOffset = { 0, 0, 0 };
-        region.imageExtent = {
-            static_cast<uint32_t>(titleBarBit.bmWidth),
-            static_cast<uint32_t>(titleBarBit.bmHeight),
-            1
-        };
-
-
-        auto poolCommand = advanced->BeginSingleTimeCommands(copyTexturePool);
-        advanced->CopyBufferToImage(poolCommand, &stagingBuffer, &titleBarTexture, region);
-        advanced->EndSingleTimeCommands(poolCommand);
-        graphics->ReleaseBuffer(&stagingBuffer);
-    }
-
-    if (!pipeline || !set) {
-        auto builderObj = advanced->CreatePipelineBuilder();
-        auto builder = builderObj->Get();
-
-        advanced->BuilderAddShader(builderObj, pixelShader);
-        advanced->BuilderAddShader(builderObj, vertexShader);
-        advanced->BuilderSetBlendState(builderObj, blending);
-        advanced->BuilderSetInputLayout(builderObj, inputLayout);
-        advanced->BuilderSetRasterizer(builderObj, rast);
-        advanced->BuilderSetDepthStencil(builderObj, depth);
-        advanced->BuilderSetDescriptorPool(builderObj, dPool);
-        advanced->BuilderSetDescriptorSetLayout(builderObj, dSetLayout);
-
-        pipeline = advanced->CreatePipeline(builderObj);
-        set = advanced->CreateDescriptorSet(pipeline);
-
-        changed = true;
-    }
-
-    if (changed) {
-        advanced->SetDescriptorSetTexture(set, &titleBarTexture);
-        advanced->SetDescriptorSetSamplerState(set, samplerState);
-        advanced->UpdateDescriptorSet(set);
-    }
-
-
-    list->BindViewPort(viewport);
-    list->BindScissor(viewport);
-    list->BindPipeline(pipeline);
-    list->BindDescriptorSet(set);
-    list->BindBuffer(&titleBarVertice);
-    list->Draw(PrimitiveType::TriangleStrip, 4);
-    graphics->PopGroup();
-
-}
-
-void bnWindowTitlebar::ReleaseRenderVars(IGraphicsDevice* graphics)
+#else
+void bnWindowTitlebar::updateLPMMI(WindowMinMaxInfo info)
 {
-    if (pipeline) {
-        pipeline->Get()->Release();
-        set->DestroyHandle();
-        pipeline->DestroyHandle();
-        set = nullptr;
-        pipeline = nullptr;
-    }
-    graphics->ReleaseBuffer(titleBarVertice);
-    graphics->ReleaseTexture(titleBarTexture);
+#ifdef __linux__
+ linuxWindow::setLPMMI(window.handle, info);
+#endif
 }
+#endif
 
+// void bnWindowTitlebar::RenderFrame(bnGraphics* graphics, GraphicsAdvanced* advanced, GraphicAdvancedCommandList* list,
+//     ResourceHandle<IInputLayout>* inputLayout,
+//     ResourceHandle<ISamplerState>* samplerState,
+//     ResourceHandle<IBlendState>* blending,
+//     ResourceHandle<IRasterizerState>* rast,
+//     ResourceHandle<IDepthStencilState>* depth,ResourceHandle<ICommandPool>* copyTexturePool,
+//     ResourceHandle<IShader>* vertexShader,
+//     ResourceHandle<IShader>* pixelShader, ResourceHandle<IViewPort>* viewport,
+//     ResourceHandle<IDescriptorPool>* dPool,
+//     ResourceHandle<IDescriptorSetLayout>* dSetLayout
+// )
+// {
+//     graphics->PushGroup("Title Bar Render");
+//     bool changed = this->changed;
+//
+//     if (changed) {
+//         graphics->ReleaseTexture(&titleBarTexture);
+//         graphics->ReleaseBuffer(&titleBarVertice);
+//     }
+//
+//     auto title_bar_rect = win32_titlebar_rect();
+//
+//     if (titleBarBit.bmWidth == 0) return;
+//
+//     if (config.enabled) {
+//         if (titleBarBit.bmWidth != 0) {
+//
+//
+//             bool exists = titleBarTexture.Exists();
+//             if (!exists && changed) {
+//                 TextureDesc tbDesc;
+//                 tbDesc.format = window.choice == VULKAN ? TextureFormat::BGRA8_UNorm_SRGB : TextureFormat::BGRA8_UNorm;
+//                 tbDesc.width = titleBarBit.bmWidth;
+//                 tbDesc.height = titleBarBit.bmHeight;
+//                 tbDesc.widthBytes = titleBarBit.bmWidthBytes;
+//                 tbDesc.CpuAccessWrite = true;
+//
+//                 graphics->CreateTexture(tbDesc, nullptr, &titleBarTexture);
+//
+//             }
+//         }
+//
+//         if (!titleBarVertice.Exists() && changed) {
+//             RECT rect;
+//             GetClientRect(window.handle, &rect);
+//
+//             float aspectRatio = (float)titleBarBit.bmHeight / ((rect.bottom - rect.top) - (float)(title_bar_rect.bottom - title_bar_rect.top));
+//             float titlebarRatio = (float)titleBarBit.bmHeight / ((rect.bottom - rect.top) - (float)(title_bar_rect.bottom - title_bar_rect.top));
+//
+//             Vertex vertices[] = {
+//                 { -1.0f, 1.0f,                          0.0f, 0.0f, 0.0f }, // top-left
+//                 {  1.0f, 1.0f,                          0.0f, 1.0f, 0.0f }, // top-right
+//                 { -1.0f, (1.0f - 2.0f * titlebarRatio), 0.0f, 0.0f, 1.0f }, // bottom-left
+//                 {  1.0f, (1.0f - 2.0f * titlebarRatio), 0.0f, 1.0f, 1.0f }, // bottom-right
+//             };
+//
+//             BufferDesc tbBufferDesc;
+//             tbBufferDesc.type = BufferType::Vertex;
+//             tbBufferDesc.size = std::size(vertices);
+//             tbBufferDesc.byteWidth = sizeof(Vertex) * std::size(vertices);
+//             tbBufferDesc.stride = sizeof(Vertex);
+//             tbBufferDesc.dynamic = false;
+//
+//             graphics->CreateBuffer(tbBufferDesc, &vertices, &titleBarVertice);
+//         }
+//
+//     }
+//
+//
+//     if (changed) {
+//         BufferDesc stagingDesc = {};
+//         stagingDesc.size = titleBarBit.bmWidthBytes * titleBarBit.bmHeight * 4;
+//         stagingDesc.type = BufferType::Staging;
+//
+//         if (!stagingBuffer.Exists()) graphics->CreateBuffer(stagingDesc, nullptr, &stagingBuffer);
+//         advanced->MapBufferMemory(&stagingBuffer, &data);
+//
+//         for (int y = 0; y < titleBarBit.bmHeight; ++y) {
+//             MemoryCommands::Copy(advanced->getCommands(),
+//                 &data,
+//                 titleBarImage + y * titleBarBit.bmWidthBytes,
+//                 titleBarBit.bmWidthBytes,
+//                 y * titleBarBit.bmWidthBytes);
+//         }
+//
+//         advanced->UnmapBufferMemory(&stagingBuffer);
+//
+//         BufferImageCopyDesc region{};
+//         region.imageSubresource.aspectMask = IMAGE_ASPECT_COLOR_BIT;
+//         region.imageSubresource.layerCount = 1;
+//
+//         region.imageOffset = { 0, 0, 0 };
+//         region.imageExtent = {
+//             static_cast<uint32_t>(titleBarBit.bmWidth),
+//             static_cast<uint32_t>(titleBarBit.bmHeight),
+//             1
+//         };
+//
+//
+//         auto poolCommand = advanced->BeginSingleTimeCommands(copyTexturePool);
+//         advanced->CopyBufferToImage(poolCommand, &stagingBuffer, &titleBarTexture, region);
+//         advanced->EndSingleTimeCommands(poolCommand);
+//         graphics->ReleaseBuffer(&stagingBuffer);
+//     }
+//
+//     if (!pipeline || !set) {
+//         auto builderObj = advanced->CreatePipelineBuilder();
+//         auto builder = builderObj->Get();
+//
+//         advanced->BuilderAddShader(builderObj, pixelShader);
+//         advanced->BuilderAddShader(builderObj, vertexShader);
+//         advanced->BuilderSetBlendState(builderObj, blending);
+//         advanced->BuilderSetInputLayout(builderObj, inputLayout);
+//         advanced->BuilderSetRasterizer(builderObj, rast);
+//         advanced->BuilderSetDepthStencil(builderObj, depth);
+//         advanced->BuilderSetDescriptorPool(builderObj, dPool);
+//         advanced->BuilderSetDescriptorSetLayout(builderObj, dSetLayout);
+//
+//         pipeline = advanced->CreatePipeline(builderObj);
+//         set = advanced->CreateDescriptorSet(pipeline);
+//
+//         changed = true;
+//     }
+//
+//     if (changed) {
+//         advanced->SetDescriptorSetTexture(set, &titleBarTexture);
+//         advanced->SetDescriptorSetSamplerState(set, samplerState);
+//         advanced->UpdateDescriptorSet(set);
+//     }
+//
+//
+//     list->BindViewPort(viewport);
+//     list->BindScissor(viewport);
+//     list->BindPipeline(pipeline);
+//     list->BindDescriptorSet(set);
+//     list->BindBuffer(&titleBarVertice);
+//     list->Draw(PrimitiveType::TriangleStrip, 4);
+//     graphics->PopGroup();
+//
+// }
+//
+// void bnWindowTitlebar::ReleaseRenderVars(IGraphicsDevice* graphics)
+// {
+//     if (pipeline) {
+//         pipeline->Get()->Release();
+//         set->DestroyHandle();
+//         pipeline->DestroyHandle();
+//         set = nullptr;
+//         pipeline = nullptr;
+//     }
+//     graphics->ReleaseBuffer(titleBarVertice);
+//     graphics->ReleaseTexture(titleBarTexture);
+// }
+//

@@ -1,10 +1,31 @@
 cmake_minimum_required(VERSION 3.14)
-project(BORA VERSION 0.0.1 LANGUAGES C CXX ASM)
+project(BORA VERSION 0.6.1 LANGUAGES C CXX)
+include(FindPkgConfig)
+macro(bora_check_module TARGET_NAME MODULE_PKG DEF_NAME FRIENDLY_NAME)
+    pkg_check_modules(${DEF_NAME}_PKG QUIET ${MODULE_PKG})
+    if(${DEF_NAME}_PKG_FOUND)
+        target_compile_definitions(${TARGET_NAME} PRIVATE "${DEF_NAME}=1")
+        target_include_directories(${TARGET_NAME} PRIVATE ${${DEF_NAME}_PKG_INCLUDE_DIRS})
+        target_link_libraries(${TARGET_NAME} PRIVATE ${${DEF_NAME}_PKG_LIBRARIES})
+        message(STATUS "BORA: ${FRIENDLY_NAME} found")
+        set(${DEF_NAME}_FOUND TRUE)
+    else()
+        set(${DEF_NAME}_FOUND FALSE)
+    endif()
+endmacro()
+
+set(BORA_WRAPPER_VERSION_MAJOR 1)
+set(BORA_WRAPPER_VERSION_MINOR 0)
+set(BORA_WRAPPER_VERSION_PATCH 0)
 
 option(ENABLE_ASAN "Enable Address Sanitizer (Debug builds affected only)" OFF)
+option(DEBUGGER "Is this a debugger varient that can debug BORA Applications?" OFF)
+if(DEBUGGER)
+    message(STATUS "Debugging Interpretation Enabled")
+endif()
 if(ENABLE_ASAN)
     message(STATUS "Address Sanitizer enabled")
-    if(win32)
+        if(win32)
     set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /fsanitize=address")
     set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} /fsanitize=address")
     elseif(UNIX)
@@ -38,31 +59,6 @@ endif()
 
 add_compile_definitions(BORA_UI_SUPPORT BORA_USE_SPIRV WASM_ENABLE_DUMP_CALL_STACK=1)
 
-# WAMR Config options
-
-set(WAMR_BUILD_INTERP 1)
-set(WAMR_BUILD_AOT 1)
-set(WAMR_BUILD_JIT 0)
-set(WAMR_BUILD_LIBC_BUILTIN 1)
-set(WAMR_BUILD_LIBC_WASI 1)
-set(WAMR_BUILD_FAST_INTERP 1)
-set(WAMR_BUILD_MULTI_MODULE 0)
-set(WAMR_BUILD_LIB_PTHREAD 0)
-set(WAMR_BUILD_MINI_LOADER 0)
-set(WAMR_BUILD_SIMD 1)
-set(WAMR_BUILD_MEMORY64 1)
-set(WAMR_BUILD_DEBUG_INTERP 0) # todo: add more implementations
-#set(WAMR_ENABLE_INTERP_FRAME_TS 1)
-#set(WAMR_ENABLE_DUMP_CALL_STACK 1)
-
-
-if(WAMR_BUILD_DEBUG_INTERP)
-    set(WAMR_BUILD_FAST_INTERP 0)
-    set(WAMR_BUILD_MINI_LOADER 0)
-    set(WAMR_BUILD_SIMD 0)
-endif()
-
-set(WAMR_ROOT_DIR "${CMAKE_CURRENT_SOURCE_DIR}/contribs/wasm-micro-runtime")
 
 # ───────────────────────────────────────────────
 # ░░ Helper Macro Definitions ░░
@@ -78,10 +74,6 @@ function(collect_sources VAR)
     set(${VAR} ${TMP} PARENT_SCOPE)
 endfunction()
 
-# ───────────────────────────────────────────────
-# ░░ Dependencies
-# ───────────────────────────────────────────────
-find_package(Vulkan REQUIRED)
 
 include_directories(
         3rdparty
@@ -116,13 +108,32 @@ file(GLOB_RECURSE GRAPH_FILES ../global/cpp/contribs/nGraphics/*)
 list(REMOVE_ITEM BORA_SOURCES_CONTRIBWRAPPER ${GRAPH_FILES})
 list(REMOVE_ITEM BORA_SOURCES ${BORA_SOURCES_WRAPPER})
 
-if (NOT DEFINED WAMR_BUILD_MEMORY64)
-    set (WAMR_BUILD_MEMORY64 1)
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    set(BUILD_TYPE Debug)
+else()
+    set(BUILD_TYPE Release)
 endif()
 
+
+if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
+    set(ARCH "x86_64")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|ARM64|arm64")
+    set(ARCH "arm64")
+elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "i386|i686|x86")
+    set(ARCH "x86")
+else()
+    set(ARCH "${CMAKE_SYSTEM_PROCESSOR}")
+endif()
+string(TOLOWER "${CMAKE_SYSTEM_NAME}" SYSTEM_NAME_LOWER)
+
 set(SKIA_SOURCE_DIR "${CMAKE_SOURCE_DIR}/../global/contribs/bskia")
-set(SKIA_BUILD_DIR "${CMAKE_SOURCE_DIR}/../global/cached_libs/bskia")
+set(WASMTIME_SOURCE_DIR "${CMAKE_SOURCE_DIR}/../global/contribs/bora-wasmtime")
+set(SKIA_BUILD_DIR "${CMAKE_SOURCE_DIR}/../global/cached_libs/${SYSTEM_NAME_LOWER}/${ARCH}/bskia")
+set(WASMTIME_BUILD_DIR "${CMAKE_SOURCE_DIR}/../global/cached_libs/${SYSTEM_NAME_LOWER}/${ARCH}/bora-wasmtime")
+
 include(${CMAKE_SOURCE_DIR}/../global/cmake/skia.cmake)
+include(${CMAKE_SOURCE_DIR}/../global/cmake/wasmtime.cmake)
+
 # Platform configs
 if(WIN32)
     include(${CMAKE_SOURCE_DIR}/cmake/platform/windows.cmake)

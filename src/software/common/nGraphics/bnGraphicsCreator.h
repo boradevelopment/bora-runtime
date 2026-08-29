@@ -1,12 +1,14 @@
 #pragma once
 
-#import <nGraphics/bnGraphicsMTL.h>
 #include "nGraphics/ImmediateGraphicsAbstract.h"
 #include "nGraphics/ExplicitGraphicsAbstract.h"
 #include "nGraphics/GraphicsAbstractions.h"
 #ifdef WIN32
 #include "nGraphics/bnGraphicsD3D11.h"
 #include "nGraphics/bnGraphicsD3D12.h"
+#endif
+#ifdef __APPLE__
+#import <nGraphics/bnGraphicsMTL.h>
 #endif
 #include "bnGraphicsVK.h"
 #include "software/win32/nGraphics/bnGraphicsOGL.h"

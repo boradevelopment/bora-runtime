@@ -30,9 +30,16 @@ typedef struct WindowRect {
     long top = 0;
     long right = 0;
     long bottom = 0;
+
+    [[nodiscard]] constexpr long GetWidth() const { return right - left; }
+    [[nodiscard]] constexpr long GetHeight() const { return bottom - top; }
+
+    [[nodiscard]] constexpr bool IsEmpty() const {
+        return GetWidth() <= 0 || GetHeight() <= 0;
+    }
 } WindowRect;
 
-inline boolean operator!=(WindowRect a, WindowRect b) {
+inline bool operator!=(const WindowRect& a, const WindowRect& b) {
     return (a.left != b.left || a.top != b.top || a.right != b.right || a.bottom != b.bottom);
 }
 
@@ -77,7 +84,7 @@ struct bnWindowConstructorStruct {
 };
 
 enum class WindowEventType {
-    None,
+    Unknown,
     Destroy,
     Initalize,
     InitalizeDraw,
@@ -108,14 +115,14 @@ enum class WindowCallbackCodes {
 };
 
 struct WindowEvent {
-    WindowEventType type = WindowEventType::None;
+    WindowEventType type = WindowEventType::Unknown;
     u8 originalMessage;
     u64 wordParameter;
     i64 longParameter;
 
     i64 customResult;
     // Keyboard
-    int key       = 0;      // Engine keycode
+    int key       = 0;  // converted to character
     int scancode  = 0;
 
     // Mouse
@@ -128,3 +135,65 @@ struct WindowEvent {
     int width  = 0;
     int height = 0;
 };
+
+enum class SystemCursorShape {
+    Arrow,
+    IBeam,
+    Hand,
+    ResizeNS,
+    ResizeEW
+};
+
+#ifdef __linux
+#include "nWindow/linuxAbstracts.h"
+#endif
+
+struct WindowCursor {
+    SystemCursorShape shape = SystemCursorShape::Arrow;
+#ifdef __linux__
+    LinuxCursorHandle nativeHandle;
+#endif
+};
+
+
+#ifndef WIN32
+
+struct WindowMinMaxInfo
+{
+    long minWidth, minHeight, maxWidth, maxHeight;
+};
+
+enum class HitTestResult : u64 {
+    Nowhere     = 0,
+    Client      = 1,
+    Caption     = 2,
+    Left        = 10,
+    Right       = 11,
+    Top         = 12,
+    TopLeft     = 13,
+    TopRight    = 14,
+    Bottom      = 15,
+    BottomLeft  = 16,
+    BottomRight = 17
+};
+
+inline HitTestResult PerformHitTest(int x, int y, int width, int height, int borderMargin = 6, int captionHeight = 30) {
+    bool top    = y < borderMargin;
+    bool bottom = y >= (height - borderMargin);
+    bool left   = x < borderMargin;
+    bool right  = x >= (width - borderMargin);
+
+    if (top && left)     return HitTestResult::TopLeft;
+    if (top && right)    return HitTestResult::TopRight;
+    if (bottom && left)  return HitTestResult::BottomLeft;
+    if (bottom && right) return HitTestResult::BottomRight;
+    if (top)             return HitTestResult::Top;
+    if (bottom)          return HitTestResult::Bottom;
+    if (left)            return HitTestResult::Left;
+    if (right)           return HitTestResult::Right;
+
+    if (y < captionHeight) return HitTestResult::Caption;
+
+    return HitTestResult::Client;
+}
+#endif

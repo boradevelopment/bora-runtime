@@ -1,23 +1,21 @@
 // this is a huge pile of dogshit, clean up this up immediately soon.
 #pragma once
 #ifndef WRAPPER
-#include "bh_platform.h"
-#include "bh_read_file.h"
-#include "wasm_export.h"
 #include "TAZA.h"
 #include <stdlib.h>
 #include <string.h>
+#include "wasmtime.hh"
+#include "WasmRunner.h"
 #include "host/Commands.h"
+#include "logging/LogManager.h"
 #include "nWindow/bnMessageBox.h"
 #include "nWindow/bnUserWindow.h"
 #include "tools/AppParam.h"
+#include "tools/CPUInfo.h"
+#include "wasm/WasmLibraryLinker.h"
 
 #if __linux__
 #include <dlfcn.h>
-#endif
-
-#if WASM_ENABLE_LIBC_WASI != 0
-#include "libc_wasi.c"
 #endif
 
 
@@ -27,16 +25,6 @@ static char **app_argv;
 #define MODULE_PATH ("--module-path=")
 
 using InitializeSymbolsFunc = int(*)(int, char * b[]);
-
-
-// inline std::wstring UTF8ToWString2(const std::string& utf8)
-// {
-//     if (utf8.empty()) return {};
-//     int size_needed = MultiByteToWideChar(CP_UTF8, 0, utf8.data(), (int)utf8.size(), nullptr, 0);
-//     std::wstring wstr(size_needed, 0);
-//     MultiByteToWideChar(CP_UTF8, 0, utf8.data(), (int)utf8.size(), wstr.data(), size_needed);
-//     return wstr;
-// }
 
 #include <cstring>
 #include <string>
@@ -85,464 +73,77 @@ bool IsRunningAsDLL() {
 #endif
 }
 
-#include "host/hostSymbols.h"
 
 
 
 
+const int app_instance_main(wasmtime_context_t* context, const WasmRuntimeModule* module_inst)
+{
+    WasmTools::setLastContext(context);
+    wasmtime_extern_t item;
+    bool found = wasmtime_instance_export_get(context, &module_inst->instance, "_start", 6, &item);
 
-
-#if WIN32
-LRESULT CALLBACK WindowProc(HWND hwnd, UINT uMsg, WPARAM wParam, LPARAM lParam) {
-    switch (uMsg) {
-        case WM_DESTROY:
-            PostQuitMessage(0);
-            return 0;
-        case WM_SIZE:
-            //?
-            return 0;
+    if (!found || item.kind != WASMTIME_EXTERN_FUNC) {
+        found = wasmtime_instance_export_get(context, &module_inst->instance, "main", 4, &item);
     }
-    return DefWindowProc(hwnd, uMsg, wParam, lParam);
-}
-
-void run_message_loop() {
-    MSG msg = {};
-    while (GetMessage(&msg, NULL, 0, 0)) {
-        TranslateMessage(&msg);
-        DispatchMessage(&msg);
-    }
-}
-
-static void create_window(wasm_exec_env_t exec_env, int32_t title_ptr, int32_t width, int32_t height) {
-    // Get the module instance from the execution environment
-    wasm_module_inst_t module_inst = wasm_runtime_get_module_inst(exec_env);
-
-    if (!module_inst) {
-        std::cerr << "Invalid module instance" << std::endl;
-        return;
+    if (!found || item.kind != WASMTIME_EXTERN_FUNC) {
+        std::cerr << "Could not find _start or main function inside instance!\n";
+        return 2;
     }
 
-    // Get a pointer to the title string in native memory
-    char *title = (char *)wasm_runtime_addr_app_to_native(module_inst, title_ptr);
-    if (!title) {
-        std::cerr << "Failed to translate app address" << std::endl;
-        return;
+
+    wasmtime_func_t entry_func = item.of.func;
+    wasm_trap_t *trap = nullptr;
+    wasmtime_error_t *error = nullptr;
+    if (WasmLibraryLinker::getInstance()->getDebugging()) error = bwasmtime_gdb_call_func(WasmLibraryLinker::getInstance()->getDebugServer(), WasmLibraryLinker::getInstance()->getStore(), &entry_func, nullptr, 0, nullptr, nullptr, 0);
+    else error = wasmtime_func_call(context, &entry_func, nullptr, 0, nullptr, 0, &trap);
+
+    if (error == nullptr && trap == nullptr) {
+        printf("Guest returned: 0\n");
+        return 0;
     }
 
-    // Copy the title into a null-terminated C string
-    std::string window_title(title);
-
-    // Print or use the arguments as needed
-    std::cout << "BORA: Creating window titled \"" << window_title << "\" with size " << width << "x" << height << std::endl;
-
-    const char CLASS_NAME[] = "MyWasmWindowClass";
-
-
-//    WNDCLASS wc = {};
-//    wc.lpfnWndProc   = WindowProc;
-//    wc.hInstance     = GetModuleHandle(NULL);
-//    wc.lpszClassName = CLASS_NAME;
-//
-//    RegisterClass(&wc);
-//
-//    HWND hwnd = CreateWindowEx(
-//            0,
-//            CLASS_NAME,
-//            window_title.c_str(),
-//            WS_OVERLAPPEDWINDOW,
-//            CW_USEDEFAULT, CW_USEDEFAULT,
-//            width, height,
-//            NULL,
-//            NULL,
-//            GetModuleHandle(NULL),
-//            NULL
-//    );
-//
-//    if (hwnd == NULL) {
-//        std::cerr << "Failed to create window" << std::endl;
-//        return;
-//    }
-//
-//    ShowWindow(hwnd, SW_SHOW);
-//    UpdateWindow(hwnd);
-//
-//    run_message_loop();
-}
-
-#else
-
-static void create_window(wasm_exec_env_t exec_env, int32_t title_ptr, int32_t width, int32_t height) {
-   return;
-}
-#endif
-
-static NativeSymbol native_symbolsWin[] = {
-        {
-                "create_window",               // Function name in WASM
-                (void *)create_window,        // Pointer to native function
-                "(iii)i",                      // Signature: 3 int32s (title_ptr, title_len, width, height), returning int (maybe a window ID?)
-                nullptr
+    if (error != nullptr) {
+        int exit_code = 0;
+        // Wasmtime packages WASI exit calls into standard engine errors
+        if (wasmtime_error_exit_status(error, &exit_code)) {
+            wasmtime_error_delete(error);
+            return exit_code;
         }
-};
 
-/* clang-format off */
-static int
-print_help()
-{
-
-    std::vector<std::string> asciiArt = {
-            "    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@    ",
-            "    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@    ",
-            "    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@    ",
-            "    @@@@@@@@@@@@@@@@@@@@@@@@.....@@@@@@......@@@@@@@@@@@@@@@@@@@@@@@@@@    ",
-            "    @@@@@@@@@@@@@@@@@@@@@@....@....@@...@@@@...@@@@@@@@@@@@@@@@@@@@@@@@    ",
-            "    @@@@@@@@@@@@@@@@@@@@...@@@@@@@.....@@@@@@@..@@@@@@@@@@@@@@@@@@@@@@@    ",
-            "    @@@@@@@@@@@@@@@@@@@..@@@@@@@@@@..@@.....@@@..@@@@@@@@@@@@@@@@@@@@@@    ",
-            "    @@@@@@@@@@@@@@@@@@..@@.......@@@@@.......@@@..@@@@@@@@@@@@@@@@@@@@@    ",
-            "    @@@@@@@@@@@@@@@@@...@...@@@...@@@..@@@@@.@@@..@@@@.......@@@@@@@@@@    ",
-            "    @@@@@@@@@@@@@@@@@..@@...@@@@..@@@..@@@@..@@@@.......@@@....@@@@@@@@    ",
-            "    @@@@@@@.............@@@...@@..@@@@@......@@@@@.@@@@@@@@@@@@...@@@@@    ",
-            "    @@@@@...@@@@@@@@@@..@@@@.....@@@@@@@....@@@@@@@@@@@@@@@@@@@@..@@@@@    ",
-            "    @@@...@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@.@@@@@...@@@@    ",
-            "    @@@..@@@@@.@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@....@@@@@@..@@@@@    ",
-            "    @@...@@@@@@....@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@.....@@@@@@@@@..@@@@@    ",
-            "    @@@...@@@@@@@@.....@@@@@@@@@@@@@@@@@@@@@@@@......@@@@@@@@@@....@@@@    ",
-            "    @@@@...@@@@@@@@@.......@@@@@@@@@@@@@@@@.......@@@@@@@@@@@@@@@@...@@   .------------------------------------------------------------------------------------------.",
-            "    @@@@@...@@@@@@@@@@@........................@@@@@@@@@@@@@@@@@@@@...@   | _____ _ _ _   ____             _   _       ____          _   _       ____            _   |",
-            "    @@@...@@@@@@@@@@@@@@@@..................@@@@@@@@@@@@@@@@@@@@@@@...@   ||_   _(_) | | |  _ \\  ___  __ _| |_| |__   |  _ \\  ___   | | | |___  |  _ \\ __ _ _ __| |_ |",
-            "    @@...@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@...@@   |  | | | | | | | | | |/ _ \\/ _` | __| '_ \\  | | | |/ _ \\  | | | / __| | |_) / _` | '__| __||",
-            "    @@..@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@....@@@   |  | | | | | | | |_| |  __/ (_| | |_| | | | | |_| | (_) | | |_| \\__ \\ |  __/ (_| | |  | |_ |",
-            "    @@@...@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@...@@@@@   |  |_| |_|_|_| |____/ \\___|\\__,_|\\__|_| |_| |____/ \\___/   \\___/|___/ |_|   \\__,_|_|   \\__||",
-            "    @@@@@...@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@...@@@@   '------------------------------------------------------------------------------------------'",
-            "    @@@@....@@@@@@@@@@@@@@@@.................@@@@@@@@@@@@@@@@@@@@..@@@@    ",
-            "    @@@...@@@@@@...@@@@@@@...@@@@@@@@@@@@@@...@@@@@@@......@@@@...@@@@@    ",
-            "    @@@@..@@@......@@@@@....@@@@@@@@@@@@@@@@....@@@@@@..@@.......@@@@@@    ",
-            "    @@@@@.....@@@..@@@....@@@@@@@@@@@@@@@@@@@@@....@....@@@@@@@@@@@@@@@    ",
-            "    @@@@@@@@@@@@@@.....@@@@@@@@@@@@@@@@@@@@@@@@@@@....@@@@@@@@@@@@@@@@@    ",
-            "    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@    ",
-            "    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@    ",
-            "    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@    ",
-            "    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@    ",
-            "    @@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@@    ",
-            "                                                                            ",
-    };
-
-
-
-    for (size_t i = 0; i < asciiArt.size(); ++i) {
-        std::cout << asciiArt[i];
-        std::cout << std::endl;
+        // It wasn't a standard exit; it was a physical engine execution failure
+        wasm_name_t msg;
+        wasmtime_error_message(error, &msg);
+        std::cerr << "Wasmtime execution engine error: " << std::string(msg.data, msg.size) << "\n";
+        wasm_name_delete(&msg);
+        wasmtime_error_delete(error);
+        return 3;
     }
 
-    printf("BORA");
-    printf("Here are some options:");
-//    printf("Usage: iwasm [-options] wasm_file [args...]\n");
-//    printf("options:\n");
-//    printf("  -f|--function name     Specify a function name of the module to run rather\n"
-//           "                         than main\n");
-#if WASM_ENABLE_LOG != 0
-    printf("  -v=n                   Set log verbose level (0 to 5, default is 2) larger\n"
-           "                         level with more log\n");
-#endif
-//#if WASM_ENABLE_INTERP != 0
-//    printf("  --interp               Run the wasm app with interpreter mode\n");
-//#endif
-//#if WASM_ENABLE_FAST_JIT != 0
-//    printf("  --fast-jit             Run the wasm app with fast jit mode\n");
-//#endif
-//#if WASM_ENABLE_JIT != 0
-//    printf("  --llvm-jit             Run the wasm app with llvm jit mode\n");
-//#endif
-//#if WASM_ENABLE_JIT != 0 && WASM_ENABLE_FAST_JIT != 0 && WASM_ENABLE_LAZY_JIT != 0
-//    printf("  --multi-tier-jit       Run the wasm app with multi-tier jit mode\n");
-//#endif
-//    printf("  --stack-size=n         Set maximum stack size in bytes, default is 64 KB\n");
-//#if WASM_ENABLE_LIBC_WASI !=0
-//    printf("  --heap-size=n            Set maximum heap size in bytes, default is 0 KB when libc wasi is enabled\n");
-//#else
-//    printf("  --heap-size=n            Set maximum heap size in bytes, default is 16 KB when libc wasi is diabled\n");
-//#endif
-//#if WASM_ENABLE_GC != 0
-//    printf("  --gc-heap-size=n         Set maximum gc heap size in bytes,\n");
-//    printf("                           default is %u KB\n", GC_HEAP_SIZE_DEFAULT / 1024);
-//#endif
-//#if WASM_ENABLE_JIT != 0
-//    printf("  --llvm-jit-size-level=n  Set LLVM JIT size level, default is 3\n");
-//    printf("  --llvm-jit-opt-level=n   Set LLVM JIT optimization level, default is 3\n");
-//#endif
-//    printf("  --repl                 Start a very simple REPL (read-eval-print-loop) mode\n"
-//           "                         that runs commands in the form of `FUNC ARG...`\n");
-//#if WASM_ENABLE_LIBC_WASI != 0
-//    libc_wasi_print_help();
-//#endif
-//#if WASM_ENABLE_MULTI_MODULE != 0
-//    printf("  --module-path=<path>   Indicate a module search path. default is current\n"
-//           "                         directory('./')\n");
-//#endif
-//#if WASM_ENABLE_LIB_PTHREAD != 0 || WASM_ENABLE_LIB_WASI_THREADS != 0
-//    printf("  --max-threads=n        Set maximum thread number per cluster, default is 4\n");
-//#endif
-//#if WASM_ENABLE_DEBUG_INTERP != 0
-//    printf("  -g=ip:port             Set the debug sever address, default is debug disabled\n");
-//    printf("                           if port is 0, then a random port will be used\n");
-//#endif
-    printf("  --version              Show version information\n");
-    return 1;
-}
-/* clang-format on */
+        if (trap != nullptr) {
+            wasm_name_t msg;
+            wasm_trap_message(trap, &msg);
+            std::cerr << "Wasm execution trapped! Call Stack:\n" << std::string(msg.data, msg.size) << "\n";
 
-static const void *
-app_instance_main(wasm_module_inst_t module_inst)
-{
-    const char *exception;
+            // 1. Log Memory Base & Table Base for dynamic libraries
+            wasmtime_val_t mem_base_ext;
+            wasmtime_val_t stack_ptr_ext;
 
-    wasm_application_execute_main(module_inst, app_argc, app_argv);
-    exception = wasm_runtime_get_exception(module_inst);
-    return exception;
-}
+            wasmtime_global_get(context, &module_inst->globalMemoryBase, &mem_base_ext);
+            int64_t mem_base = mem_base_ext.of.i64;
+            std::cerr << "   [Debug State] __memory_base = " << mem_base << "\n";
 
-static const void *
-app_instance_func(wasm_module_inst_t module_inst, const char *func_name)
-{
-    wasm_application_execute_func(module_inst, func_name, app_argc - 1,
-                                  app_argv + 1);
-    /* The result of wasm function or exception info was output inside
-       wasm_application_execute_func(), here we don't output them again. */
-    return wasm_runtime_get_exception(module_inst);
-}
+            wasmtime_global_get(context, &module_inst->globalStack, &stack_ptr_ext);
+            int64_t stackPtr = stack_ptr_ext.of.i64;
+            std::cerr << "   [Debug State] stackPtr = " << stackPtr << "\n";
 
-/**
- * Split a space separated strings into an array of strings
- * Returns NULL on failure
- * Memory must be freed by caller
- * Based on: http://stackoverflow.com/a/11198630/471795
- */
-static char **
-split_string(char *str, int *count)
-{
-    char **res = NULL, **res1;
-    char *p, *next_token;
-    int idx = 0;
-
-    /* split string and append tokens to 'res' */
-    do {
-#if WIN32
-        p = strtok_s(str, " ", &next_token);
-#elif __linux__
-        p = strtok_r(str, " ", &next_token);
-#endif
-        str = NULL;
-        res1 = res;
-        res = (char **)realloc(res1, sizeof(char *) * (uint32)(idx + 1));
-        if (res == NULL) {
-            free(res1);
-            return NULL;
+            wasm_name_delete(&msg);
+            wasm_trap_delete(trap);
+            return 3;
         }
-        res[idx++] = p;
-    } while (p);
 
-    /**
-     * Due to the function name,
-     * res[0] might contain a '\' to indicate a space
-     * func\name -> func name
-     */
-    p = strchr(res[0], '\\');
-    while (p) {
-        *p = ' ';
-        p = strchr(p, '\\');
-    }
-
-    if (count) {
-        *count = idx - 1;
-    }
-    return res;
+    return 3;
 }
-
-static void *
-app_instance_repl(wasm_module_inst_t module_inst)
-{
-    char buffer[4096];
-    char *cmd;
-    size_t n;
-
-    while ((printf("webassembly> "), fflush(stdout),
-            cmd = fgets(buffer, sizeof(buffer), stdin))
-           != NULL) {
-        bh_assert(cmd);
-        n = strlen(cmd);
-        if (cmd[n - 1] == '\n') {
-            if (n == 1)
-                continue;
-            else
-                cmd[n - 1] = '\0';
-        }
-        if (!strcmp(cmd, "__exit__")) {
-            printf("exit repl mode\n");
-            break;
-        }
-        app_argv = split_string(cmd, &app_argc);
-        if (app_argv == NULL) {
-            LOG_ERROR("Wasm prepare param failed: split string failed.\n");
-            break;
-        }
-        if (app_argc != 0) {
-            const char *exception;
-            wasm_application_execute_func(module_inst, app_argv[0],
-                                          app_argc - 1, app_argv + 1);
-            if ((exception = wasm_runtime_get_exception(module_inst)))
-                printf("%s\n", exception);
-        }
-        free(app_argv);
-    }
-
-    return NULL;
-}
-
-
-#if WIN32
-#if WASM_ENABLE_GLOBAL_HEAP_POOL != 0
-static char global_heap_buf[WASM_GLOBAL_HEAP_SIZE] = { 0 };
-#else
-static void *
-malloc_func(
-#if WASM_MEM_ALLOC_WITH_USER_DATA != 0
-        void *user_data,
-#endif
-        unsigned int size)
-{
-    return malloc(size);
-}
-
-static void *
-realloc_func(
-#if WASM_MEM_ALLOC_WITH_USER_DATA != 0
-        void *user_data,
-#endif
-        void *ptr, unsigned int size)
-{
-    return realloc(ptr, size);
-}
-
-static void
-free_func(
-#if WASM_MEM_ALLOC_WITH_USER_DATA != 0
-        void *user_data,
-#endif
-        void *ptr)
-{
-    free(ptr);
-}
-#endif /* end of WASM_ENABLE_GLOBAL_HEAP_POOL */
-#else
-#if WASM_ENABLE_GLOBAL_HEAP_POOL != 0
-static char global_heap_buf[WASM_GLOBAL_HEAP_SIZE] = { 0 };
-#else
-static void *
-malloc_func(
-#if WASM_MEM_ALLOC_WITH_USAGE != 0
-        mem_alloc_usage_t usage,
-#endif
-#if WASM_MEM_ALLOC_WITH_USER_DATA != 0
-        void *user_data,
-#endif
-        unsigned int size)
-{
-    return malloc(size);
-}
-
-static void *
-realloc_func(
-#if WASM_MEM_ALLOC_WITH_USAGE != 0
-        mem_alloc_usage_t usage, bool full_size_mmaped,
-#endif
-#if WASM_MEM_ALLOC_WITH_USER_DATA != 0
-        void *user_data,
-#endif
-        void *ptr, unsigned int size)
-{
-    return realloc(ptr, size);
-}
-
-static void
-free_func(
-#if WASM_MEM_ALLOC_WITH_USAGE != 0
-        mem_alloc_usage_t usage,
-#endif
-#if WASM_MEM_ALLOC_WITH_USER_DATA != 0
-        void *user_data,
-#endif
-        void *ptr)
-{
-    free(ptr);
-}
-#endif /* end of WASM_ENABLE_GLOBAL_HEAP_POOL */
-#endif
-
-#if WASM_ENABLE_MULTI_MODULE != 0
-static char *
-handle_module_path(const char *module_path)
-{
-    /* next character after '=' */
-    return (strchr(module_path, '=')) + 1;
-}
-
-static char *module_search_path = ".";
-static bool
-module_reader_callback(package_type_t module_type, const char *module_name,
-                       uint8 **p_buffer, uint32 *p_size)
-{
-    char *file_format = NULL;
-#if WASM_ENABLE_INTERP != 0
-    if (module_type == Wasm_Module_Bytecode)
-        file_format = ".wasm";
-#endif
-#if WASM_ENABLE_AOT != 0
-    if (module_type == Wasm_Module_AoT)
-        file_format = ".aot";
-#endif
-    bh_assert(file_format);
-    const char *format = "%s/%s%s";
-    int sz = strlen(module_search_path) + strlen("/") + strlen(module_name)
-             + strlen(file_format) + 1;
-    char *wasm_file_name = wasm_runtime_malloc(sz);
-    if (!wasm_file_name) {
-        return false;
-    }
-    snprintf(wasm_file_name, sz, format, module_search_path, module_name,
-             file_format);
-    *p_buffer = (uint8_t *)bh_read_file_to_buffer(wasm_file_name, p_size);
-
-    wasm_runtime_free(wasm_file_name);
-    return *p_buffer != NULL;
-}
-
-static void
-module_destroyer_callback(uint8 *buffer, uint32 size)
-{
-    if (!buffer) {
-        return;
-    }
-
-    wasm_runtime_free(buffer);
-    buffer = NULL;
-}
-#endif /* WASM_ENABLE_MULTI_MODULE */
-
-size_t get_default_heap_size() {
-   return 1;
-}
-
-size_t get_default_stack_size() {
-#ifdef _WIN32
-    return 512 * 1024; // 512KB on Windows desktop
-#else
-    return 256 * 1024; // 256KB on POSIX
-#endif
-}
-
-
-// #endif
-
 
 #include "software/common/nWindow/bnWindow.h"
 #include "software/common/nWindow/devBnLogoWindow.h"
@@ -557,12 +158,14 @@ if (msg == ON_UPDATE){
 bnWindow* win;
 // ULONG_PTR gdiplusToken;
 
+
+
 int
 main(int argc, char *argv[]){
     // GdiplusStartupInput gdiplusStartupInput;
     // GdiplusStartup(&gdiplusToken, &gdiplusStartupInput, nullptr);
      // CreateBlockingMessageBox(L"test", L"Messagebox Title", L"Messagebox Body for descriptions and details");
-     std::cin.get();
+     //std::cin.get();
      // devBnLogoWindow();
     //  std::cin.get();
     // auto e = new bnWindowTitlebarConfig();
@@ -586,448 +189,130 @@ main(int argc, char *argv[]){
     // std::cin.get();
     // return 0;
 
+    // If we want to output all logs to a file, we add the FileAppender to the root instance to the filepath the user wants.
+    // Other children can use the same AppParam style check to create unique log files.
+    auto rootLogger = LogManager::instance().getLogger("root");
     AppParam::registerParam("debug", {"-db"});
     AppParam::initialize(argc, argv);
+#ifndef  NDEBUG // debug builds have a verbosity of 3 by default
+    rootLogger->setVerbosityLimit(3);
+#endif
+    if (AppParam::has("verbosity"))
+    {
+        rootLogger->setVerbosityLimit(AppParam::getValue<int>("verbosity"));
+    }
 
 
-    int32 ret = -1;
-    // = NULL;
-    const char *func_name = NULL;
-    uint8 *wasm_file_buf = NULL;
-    uint32 wasm_file_size;
-    uint32 stack_size = get_default_stack_size();
-#if WASM_ENABLE_LIBC_WASI != 0
-    uint32 heap_size = get_default_heap_size();
-#else
-    uint32 heap_size = 16 * 1024;
-#endif
-#if WASM_ENABLE_GC != 0
-    uint32 gc_heap_size = GC_HEAP_SIZE_DEFAULT;
-#endif
-#if WASM_ENABLE_JIT != 0
-    uint32 llvm_jit_size_level = 3;
-    uint32 llvm_jit_opt_level = 3;
-#endif
-    wasm_module_t wasm_module = NULL;
-    wasm_module_inst_t wasm_module_inst = NULL;
-    RunningMode running_mode = static_cast<RunningMode>(0);
-    RuntimeInitArgs init_args;
-    char error_buf[128] = { 0 };
-#if WASM_ENABLE_LOG != 0
-    int log_verbose_level = 5;
-#endif
-    bool is_repl_mode = false;
-    bool is_xip_file = false;
-#if WASM_ENABLE_LIBC_WASI != 0
-    libc_wasi_parse_context_t wasi_parse_ctx;
-#endif
-#if WASM_ENABLE_DEBUG_INTERP != 0
-    char *ip_addr = NULL;
-    int instance_port = 0;
-#endif
 
-#if WASM_ENABLE_LIBC_WASI != 0
-    memset(&wasi_parse_ctx, 0, sizeof(wasi_parse_ctx));
-#endif
+    // if (AppParam::has("logfile"))
+    // { // todo: get string, convert to a fs path and add root to fileAppender!!!
+    //     rootLogger->addAppender(std::make_shared<FileAppender>("./main_log.log"));
+    // }
 
+    wasm_config_t *config = wasm_config_new();
+    if (!config) {
+        fprintf(stderr, "Failed to create Wasmtime configuration.\n");
+        return -1;
+    }
 
-    /* Process options. */
-    for (argc--, argv++; argc > 0 && argv[0][0] == '-'; argc--, argv++) {
-        if (!strcmp(argv[0], "-f") || !strcmp(argv[0], "--function")) {
-            argc--, argv++;
-            if (argc < 2) {
-                return print_help();
-            }
-            func_name = argv[0];
-        }
-#if WASM_ENABLE_INTERP != 0
-        else if (!strcmp(argv[0], "--interp")) {
-            running_mode = Mode_Interp;
-        }
-#endif
-#if WASM_ENABLE_FAST_JIT != 0
-            else if (!strcmp(argv[0], "--fast-jit")) {
-            running_mode = Mode_Fast_JIT;
-        }
-#endif
-#if WASM_ENABLE_JIT != 0
-            else if (!strcmp(argv[0], "--llvm-jit")) {
-            running_mode = Mode_LLVM_JIT;
-        }
-#endif
-#if WASM_ENABLE_JIT != 0 && WASM_ENABLE_FAST_JIT != 0
-            else if (!strcmp(argv[0], "--multi-tier-jit")) {
-            running_mode = Mode_Multi_Tier_JIT;
-        }
-#endif
-#if WASM_ENABLE_LOG != 0
-        else if (!strncmp(argv[0], "-v=", 3)) {
-            log_verbose_level = atoi(argv[0] + 3);
-            if (log_verbose_level < 0 || log_verbose_level > 5)
-                return print_help();
-        }
-#endif
-        else if (!strcmp(argv[0], "--repl")) {
-            is_repl_mode = true;
-        }
-        else if (!strncmp(argv[0], "--stack-size=", 13)) {
-            if (argv[0][13] == '\0')
-                return print_help();
-            stack_size = atoi(argv[0] + 13);
-        }
-        else if (!strncmp(argv[0], "--heap-size=", 12)) {
-            if (argv[0][12] == '\0')
-                return print_help();
-            heap_size = atoi(argv[0] + 12);
-        }
-#if WASM_ENABLE_GC != 0
-            else if (!strncmp(argv[0], "--gc-heap-size=", 15)) {
-            if (argv[0][15] == '\0')
-                return print_help();
-            gc_heap_size = atoi(argv[0] + 15);
-        }
-#endif
-#if WASM_ENABLE_JIT != 0
-            else if (!strncmp(argv[0], "--llvm-jit-size-level=", 22)) {
-            if (argv[0][22] == '\0')
-                return print_help();
-            llvm_jit_size_level = atoi(argv[0] + 22);
-            if (llvm_jit_size_level < 1) {
-                printf("LLVM JIT size level shouldn't be smaller than 1, "
-                       "setting it to 1\n");
-                llvm_jit_size_level = 1;
-            }
-            else if (llvm_jit_size_level > 3) {
-                printf("LLVM JIT size level shouldn't be greater than 3, "
-                       "setting it to 3\n");
-                llvm_jit_size_level = 3;
-            }
-        }
-        else if (!strncmp(argv[0], "--llvm-jit-opt-level=", 21)) {
-            if (argv[0][21] == '\0')
-                return print_help();
-            llvm_jit_opt_level = atoi(argv[0] + 21);
-            if (llvm_jit_opt_level < 1) {
-                printf("LLVM JIT opt level shouldn't be smaller than 1, "
-                       "setting it to 1\n");
-                llvm_jit_opt_level = 1;
-            }
-            else if (llvm_jit_opt_level > 3) {
-                printf("LLVM JIT opt level shouldn't be greater than 3, "
-                       "setting it to 3\n");
-                llvm_jit_opt_level = 3;
-            }
-        }
-#endif
-#if WASM_ENABLE_MULTI_MODULE != 0
-            else if (!strncmp(argv[0], MODULE_PATH, strlen(MODULE_PATH))) {
-            module_search_path = handle_module_path(argv[0]);
-            if (!strlen(module_search_path)) {
-                return print_help();
-            }
-        }
-#endif
-#if WASM_ENABLE_LIB_PTHREAD != 0 || WASM_ENABLE_LIB_WASI_THREADS != 0
-            else if (!strncmp(argv[0], "--max-threads=", 14)) {
-            if (argv[0][14] == '\0')
-                return print_help();
-            wasm_runtime_set_max_thread_num(atoi(argv[0] + 14));
-        }
-#endif
-//#if WASM_ENABLE_DEBUG_INTERP != 0
-//            else if (!strncmp(argv[0], "-g=", 3)) {
-//            char *port_str = strchr(argv[0] + 3, ':');
-//            char *port_end;
-//            if (port_str == NULL)
-//                return print_help();
-//            *port_str = '\0';
-//            instance_port = strtoul(port_str + 1, &port_end, 10);
-//            if (port_str[1] == '\0' || *port_end != '\0')
-//                return print_help();
-//            ip_addr = argv[0] + 3;
-//        }
-//#endif
-        else if (!strcmp(argv[0], "--version")) {
-            uint32 major, minor, patch;
-            wasm_runtime_get_version(&major, &minor, &patch);
-            printf("iwasm %" PRIu32 ".%" PRIu32 ".%" PRIu32 "\n", major, minor,
-                   patch);
-            return 0;
-        }
-        else {
-#if WASM_ENABLE_LIBC_WASI != 0
-            libc_wasi_parse_result_t result =
-                    libc_wasi_parse(argv[0], &wasi_parse_ctx);
-            switch (result) {
-                case LIBC_WASI_PARSE_RESULT_OK:
-                    continue;
-                case LIBC_WASI_PARSE_RESULT_NEED_HELP:
-                    return print_help();
-                case LIBC_WASI_PARSE_RESULT_BAD_PARAM:
-                    return 1;
-            }
-#else
-            return print_help();
-#endif
+    wasmtime_config_wasm_memory64_set(config, true);
+
+    wasm_engine_t *engine = nullptr;
+    WasmLibraryLinker linker;
+    if (AppParam::has("debug"))
+    {
+        wasmtime_config_epoch_interruption_set(config, true);
+        wasmtime_config_guest_debug_set(config, true);
+        wasmtime_config_cranelift_opt_level_set(config, WASMTIME_OPT_LEVEL_NONE);
+        wasmtime_config_debug_info_set(config, true);
+        wasmtime_config_native_unwind_info_set(config, true);
+        linker.enableDebugging(config, "127.0.0.1:12345");
+        engine = linker.getEngine();
+    } else
+    {
+        engine = wasm_engine_new_with_config(config);
+        if (!engine) {
+            fprintf(stderr, "Failed to initialize Wasmtime engine.\n");
+            return -1;
         }
     }
 
-    if (argc == 0)
-        return print_help();
-
-
-    app_argc = argc;
-    app_argv = argv;
-
-    memset(&init_args, 0, sizeof(RuntimeInitArgs));
-
-
-    init_args.running_mode = running_mode;
-    if(AppParam::has("debug")) {
-        strncpy(init_args.ip_addr, "0.0.0.0", sizeof(init_args.ip_addr) - 1);
-        init_args.ip_addr[sizeof(init_args.ip_addr) - 1] = '\0';  // Ensure null termination
-        init_args.instance_port = 1234;
+    wasmtime_store_t *store = wasmtime_store_new(engine, NULL, NULL);
+    if (!store) {
+        fprintf(stderr, "Failed to create Wasmtime store.\n");
+        wasm_engine_delete(engine);
+        return -1;
     }
-#if WASM_ENABLE_GLOBAL_HEAP_POOL != 0
-    init_args.mem_alloc_type = Alloc_With_Pool;
-    init_args.mem_alloc_option.pool.heap_buf = global_heap_buf;
-    init_args.mem_alloc_option.pool.heap_size = sizeof(global_heap_buf);
-#else
-    init_args.mem_alloc_type = Alloc_With_Allocator;
-#if WASM_MEM_ALLOC_WITH_USER_DATA != 0
-    /* Set user data for the allocator is needed */
-    /* init_args.mem_alloc_option.allocator.user_data = user_data; */
-#endif
-    init_args.mem_alloc_option.allocator.malloc_func = (void*)(uintptr_t)&malloc_func;
-    init_args.mem_alloc_option.allocator.realloc_func = (void*)(uintptr_t)&realloc_func;
-    init_args.mem_alloc_option.allocator.free_func = (void*)(uintptr_t)&free_func;
-#endif
+    wasmtime_context_t *context = wasmtime_store_context(store);
 
-#if WASM_ENABLE_GC != 0
-    init_args.gc_heap_size = gc_heap_size;
-#endif
+    linker = std::move(WasmLibraryLinker(context, engine, store));
+    if (AppParam::has("debug"))
+    {
 
-#if WASM_ENABLE_JIT != 0
-    init_args.llvm_jit_size_level = llvm_jit_size_level;
-    init_args.llvm_jit_opt_level = llvm_jit_opt_level;
-#endif
+        // wasmtime_context_set_epoch_deadline(context, -1);
+        wasmtime_context_epoch_deadline_async_yield_and_update(context, 1);
+    }
+    wasi_config_t *wasi_config = wasi_config_new();
+    wasi_config_inherit_stdout(wasi_config);
+    wasi_config_inherit_stderr(wasi_config);
+    wasi_config_inherit_stdin(wasi_config);
+    wasi_config_preopen_dir(wasi_config, ".", ".", WASMTIME_WASI_DIR_PERMS_READ | WASMTIME_WASI_DIR_PERMS_WRITE, WASMTIME_WASI_FILE_PERMS_READ | WASMTIME_WASI_FILE_PERMS_WRITE);
 
-//#if WASM_ENABLE_DEBUG_INTERP != 0
-//    init_args.instance_port = instance_port;
-//    if (ip_addr)
-//        /* ensure that init_args.ip_addr is null terminated */
-//        strncpy_s(init_args.ip_addr, sizeof(init_args.ip_addr) - 1, ip_addr,
-//                  strlen(ip_addr));
-//#endif
-
-    /* initialize runtime environment */
-    if (!wasm_runtime_full_init(&init_args)) {
-        printf("Init runtime environment failed.\n");
+    wasmtime_error_t *error = wasmtime_context_set_wasi(context, wasi_config);
+    if (error != nullptr) {
+        std::cerr << "Failed to set WASI configuration.\n";
+        wasmtime_error_delete(error);
+        wasmtime_store_delete(store);
         return -1;
     }
 
 
-    if (!wasm_runtime_init_thread_env()) {
-        fprintf(stderr, "Failed to init thread environment\n");
-        exit(1);
-    }
-
-//    wasm_runtime_register_natives("bora::input", native_symbols,
-//                                  sizeof(native_symbols) / sizeof(NativeSymbol));
-
-
-
-
-    auto* test = new hostSymbols();
-    test->initalizeSymbols();
-    test->registerSymbol();
-
-    wasm_runtime_register_natives("bora::window", native_symbolsWin,
-                                  sizeof(native_symbolsWin) / sizeof(NativeSymbol));
-
-#if WASM_ENABLE_LOG != 0
-    bh_log_set_verbose_level(log_verbose_level);
-#endif
-
-    char *wasm_file = argv[0];
-    V2Archive boraApp;
-    boraApp.output = wasm_file;
-
-    int resArchive = boraApp.getArchive();
-    if(resArchive != 0){
-        wasm_runtime_destroy();
-        printf("This is not a BORA application\n");
+    wasmtime_store_limiter(store, INT64_MAX, -1, -1, -1, -1);
+    char *wasm_file = argv[1];
+    const WasmRuntimeModule* mainModule = WasmRunner::loadModuleByTAZA(&linker, context, engine, wasm_file);
+    if (mainModule == nullptr)
+    {
+        printf("Unable to execute file as it is not a valid BORA application.");
+        wasm_engine_delete(engine);
+        wasmtime_store_delete(store);
         return 1;
     }
-
-    if(std::get<std::string>(boraApp.header.customVariables[L"id"]) != "BORA"){
-        printf("This is not a BORA application\n");
-        return 1;
-    }
-
-    auto entryFile = std::get<std::wstring>(boraApp.header.customVariables[L"entry"]);
-    if(entryFile.empty()){
-        wasm_runtime_destroy();
-        printf("This is not a BORA application as it does not have a entry point.\n");
-        return 1;
-    }
-
-
-    auto entryV2File = boraApp.header.files.find(entryFile);
-    if(entryV2File == boraApp.header.files.end()){
-        wasm_runtime_destroy();
-        printf("This is not a BORA application as it has an invalid entry point.\n");
-        return 1;
-    }
-
-    auto logoV2File = boraApp.header.files.find(L"logo");
-
-    std::ifstream bla(wasm_file, std::ios::in | std::ios::binary);
-
-    auto logoData = boraApp.header.getV2File(bla,logoV2File->second, boraApp.iv, boraApp.key);
-
-    auto vData = boraApp.header.getV2File(bla,entryV2File->second, boraApp.iv, boraApp.key);
-    if(vData.empty()){
-        //  wasm_runtime_destroy();
-        printf("This is not a BORA application as it's corrupted\n");
-        return 1;
-    }
-
-    wasm_file_buf = vData.data();
-    wasm_file_size = vData.size();
-
-
     printf("I got the goods\n");
 
-#if WASM_ENABLE_AOT != 0
-    if (wasm_runtime_is_xip_file(wasm_file_buf, wasm_file_size)) {
-        uint8 *wasm_file_mapped;
-        int map_prot = MMAP_PROT_READ | MMAP_PROT_WRITE | MMAP_PROT_EXEC;
-        int map_flags = MMAP_MAP_32BIT;
-
-        if (!(wasm_file_mapped = static_cast<uint8 *>(os_mmap(NULL, (uint32) wasm_file_size, map_prot,
-                                                              map_flags, os_get_invalid_handle())))) {
-            printf("mmap memory failed\n");
-            wasm_runtime_free(wasm_file_buf);
-            wasm_runtime_destroy();
-        }
-
-        bh_memcpy_s(wasm_file_mapped, wasm_file_size, wasm_file_buf,
-                    wasm_file_size);
-        wasm_runtime_free(wasm_file_buf);
-        wasm_file_buf = wasm_file_mapped;
-        is_xip_file = true;
-    }
-#endif
-
-#if WASM_ENABLE_MULTI_MODULE != 0
-    wasm_runtime_set_module_reader(module_reader_callback,
-                                   module_destroyer_callback);
-#endif
-
-    /* load WASM module */
-    if (!(wasm_module = wasm_runtime_load(wasm_file_buf, wasm_file_size,
-                                          error_buf, sizeof(error_buf)))) {
-        printf("%s\n", error_buf);
-        if (!is_xip_file)
-            wasm_runtime_free(wasm_file_buf);
-        else
-            os_munmap(wasm_file_buf, wasm_file_size);
-    }
-
-#if WASM_ENABLE_LIBC_WASI != 0
-    libc_wasi_init(wasm_module, argc, argv, &wasi_parse_ctx);
-#endif
-
-    /* instantiate the module */
-    if (!(wasm_module_inst =
-                  wasm_runtime_instantiate(wasm_module, stack_size, 1,
-                                           error_buf, sizeof(error_buf)))) {
-        printf("%s\n", error_buf);
-        wasm_runtime_unload(wasm_module);
-    }
-
-    HostCommandManager::AddOnUpdateHook([wasm_module_inst](u64 handle, const HostCommandListRecord& record) {
+    HostCommandManager::AddOnUpdateHook([context, mainModule](u64 handle, const HostCommandListRecord& record) {
         std::cout << "UPDATE HOOK DETECTED :" << handle << std::endl;
-    CommandRegistry::ExecuteCommandBuffer(wasm_module_inst, nullptr, (u8*)wasm_runtime_addr_app_to_native(wasm_module_inst, record.wasmPtr), record.size);
+    CommandRegistry::ExecuteCommandBuffer(context, mainModule, nullptr, (u8*)WasmTools::fromWASM<u8*>(context, mainModule, record.wasmPtr), record.size);
 });
 
-
-    wasm_function_inst_t func = wasm_runtime_lookup_function(wasm_module_inst, "get_bora_sdk_version");
-    if (!func) {
-        printf("Unable to get SDK version function! This is not a BORA Universal Assembly");
-        return 1;
+    wasmtime_func_t func;
+    if (!WasmTools::getFunctionInInstance(context, mainModule, "get_bora_sdk_version", &func)) {
+        printf("Unable to get SDK version function! This is not a proper BORA Universal Assembly");
+        return 0;
+    } else
+    {
+        auto versionPointer = WasmTools::RequestExportedMethod<u32*>(context, mainModule, "get_bora_sdk_version");
+        auto version = WasmTools::fromWASM<const char*>(context, mainModule, (u64)versionPointer);
+        printf("Running BORA SDK Version: %s\n", version);
     }
 
-    auto exec_env = wasm_runtime_create_exec_env(wasm_module_inst, stack_size);
-
-    auto versionPointer = WasmTools::RequestExportedMethod<u32*>(exec_env, "get_bora_sdk_version");
-    auto version = WasmTools::fromWASM<const char*>(exec_env, (u64)versionPointer);
-    printf("Running BORA SDK Version: %s\n", version);
-
-    // {
-    //     uint32_t result_ptr[2]; // I guess your return value, plus any other arguments and a extra number for stack
-    //     result_ptr[0] = 0;
-    //
-    //     if (!wasm_runtime_call_wasm(exec_env, func, 1, result_ptr)) {
-    //         printf("Call failed: %s\n", wasm_runtime_get_exception(wasm_module_inst));
-    //         return 1;
-    //     }
-    //     const char *result_str = (const char *) wasm_runtime_addr_app_to_native(wasm_module_inst, result_ptr[0]);
-    //     if (!result_str) {
-    //         printf("Failed to translate address\n");
-    //         return 1;
-    //     }
-    //
-    //
-    //     printf("Running BORA SDK Version: %s\n", result_str);
-    // }
-
-#ifdef WAMR_BUILD_DEBUG_INTERP
-    if(AppParam::has("debug")) {
-        uint32_t debug_port = wasm_runtime_start_debug_instance(exec_env);
-        printf("Debugging at %d\n", debug_port);
-    }
-    #endif
+// #ifdef WASM_ENABLE_DEBUG_INTERP
+//     if(AppParam::has("debug")) {
+//         uint32_t debug_port = wasm_runtime_start_debug_instance(exec_env);
+//         printf("Debugging at %d\n", debug_port);
+//     }
+// #endif
 
 
 
-    ret = 0;
-    const char *exception = NULL;
-    if (is_repl_mode) {
-        app_instance_repl(wasm_module_inst);
-    }
-    else if (func_name) {
-        exception = static_cast<const char *>(app_instance_func(wasm_module_inst, func_name));
-        if (exception) {
-            /* got an exception */
-            ret = 1;
-        }
-    }
-    else {
-        exception = static_cast<const char *>(app_instance_main(wasm_module_inst));
-        if (exception) {
-            /* got an exception */
-            ret = 1;
-        }
-    }
+    int ret = 0;
 
-#if WASM_ENABLE_LIBC_WASI != 0
-    if (ret == 0) {
-        /* propagate wasi exit code. */
-        ret = wasm_runtime_get_wasi_exit_code(wasm_module_inst);
-    }
-#endif
-
-    if (exception) {
-        printf("Bora fail!\n");
-        printf("%s\n", exception);
-    }
-
-
-    /* destroy the module instance */
-    wasm_runtime_deinstantiate(wasm_module_inst);
-
+    ret = app_instance_main(context, mainModule);
+    if (ret == 3) return 3; // trap/exception - unsafe.
+    mainModule->destroy();
+    linker.destroy();
+    if (error) wasmtime_error_delete(error);
+    wasmtime_store_delete(store);
+    wasm_engine_delete(engine);
 
     return ret;
 }

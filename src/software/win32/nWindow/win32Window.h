@@ -6,7 +6,6 @@
  * Purpose: Does the heavy lifting for native windows code
  */
 #pragma once
-#ifdef WIN32
 #define WIN32_LEAN_AND_MEAN
 #include <windows.h>
 #include <uxtheme.h>
@@ -102,4 +101,3 @@ public:
 
     static bool isPointInRect(const WindowRect* rect, const WindowPoint point);
 };
-#endif

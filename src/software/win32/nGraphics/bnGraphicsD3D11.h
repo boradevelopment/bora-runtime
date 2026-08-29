@@ -1,36 +1,19 @@
 #pragma once
 #include <d3d11_1.h>
-
 #include "nGraphics/ImmediateGraphicsAbstract.h"
-#ifdef WIN32
-#include "nGraphics/GraphicsUtilities.h"
 #include "d3d11.h"
 #include <wrl/client.h>
 #include <comdef.h>
-#endif
 
-#ifdef WIN32
 class TextureD3D11 : public ITexture {
 public:
     TextureD3D11() {}
     TextureD3D11(const TextureDesc& desc) : mDesc(desc) {}
-    void* GetNativeHandle() override { 
-        //if (mTexture1D) {
-        //    return mTexture1D;
-        //}
-        //else if (mTexture2D) {
-        //    return mTexture1D;
-        //}
-        //else if (mTexture3D) {
-        //    return mTexture1D;
-        //}
+    void* GetNativeHandle() override {
         return mTexture;
     }
     void Release() override {
         if (owner) {
-            //if (mTexture1D) mTexture1D->Release();
-            //if (mTexture2D) mTexture2D->Release();
-            //if (mTexture3D) mTexture2D->Release();
             if (mTexture) mTexture->Release();
             if (mSrv) mSrv->Release();
         }
@@ -289,10 +272,6 @@ private:
     ID3D11Device* device;
     friend class bnGraphicsD3D11;
 };
-
-#endif
-
-#ifdef WIN32
 class bnGraphicsD3D11 : public IGraphicsDeviceImmediate {
 public:
     bnGraphicsD3D11(SysHandle& handle, IGraphicsDeviceConfig& config);
@@ -319,7 +298,7 @@ public:
     void Shutdown() override;
     void Present() override;
     void Resize(long width, long height) override;
-    
+
     ITexture* GetSwapchainImage() override;
 
     ITexture* CreateTexture(const TextureDesc& desc, const void* initialData = nullptr) override;
@@ -341,17 +320,17 @@ public:
 
     void BindShader(IShader* shader) override;
     void BindBuffer(IBuffer* buffer) override;
-    void BindTexture(ITexture* texture, u8 slot = 0) override;
+    void BindTexture(ITexture* texture, uint slot = 0) override;
     void BindInputLayout(IInputLayout* layout) override;
-    void BindSamplerState(ISamplerState* samplerState, u8 slot = 0) override;
+    void BindSamplerState(ISamplerState* samplerState, uint slot = 0) override;
     void BindViewPort(IViewPort* viewPort) override;
     void BindRasterizerState(IRasterizerState*) override;
-    void BindDepthStencilState(IDepthStencilState*, UINT stencilRef = 0) override;
-    void BindBlendState(IBlendState*, const float blendFactor[4], UINT sampleMask = 0xFFFFFFFF) override;
+    void BindDepthStencilState(IDepthStencilState*, uint stencilRef = 0) override;
+    void BindBlendState(IBlendState*, const float blendFactor[4], uint sampleMask = 0xFFFFFFFF) override;
     void BindRenderTarget(IRenderTarget*, IDepthStencil* = nullptr) override;
     void ClearRenderTarget(IRenderTarget* target, const float color[4]) override;
-    void ClearDepthStencil(IDepthStencil* target, float depth, UINT8 stencil) override;
-    void DispatchCompute(UINT x, UINT y, UINT z) override;
+    void ClearDepthStencil(IDepthStencil* target, float depth, u8 stencil) override;
+    void DispatchCompute(uint x, uint y, uint z) override;
 
     void CopyToBuffer(IBuffer* buffer, void* data, size_t size) override;
     void Draw(PrimitiveType type, size_t vertexCount, size_t vertexOffset = 0) override;
@@ -365,7 +344,7 @@ public:
     void PushGroup(const char* name, uint32_t color = 0xFFFFFFFF) override;
     void PopGroup() override;
     void SetMarker(const char* name, uint32_t color = 0xFFFFFFFF) override;
-    
+
     IDeviceContext* getContext() override { return &context; };
     IDevice* getDevice() override { return &device; };
     long width;
@@ -383,85 +362,11 @@ private:
     ID3D11Texture2D* msaaRenderTarget = nullptr;
     ID3D11RenderTargetView* msaaRTV = nullptr;
 
-    D3D11_PRIMITIVE_TOPOLOGY ConvertTopology(PrimitiveType type) {
-        switch (type) {
-        case PrimitiveType::Triangles: return D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-        case PrimitiveType::Lines: return D3D11_PRIMITIVE_TOPOLOGY_LINELIST;
-            // others...
-        default: return D3D11_PRIMITIVE_TOPOLOGY_TRIANGLELIST;
-        }
-    }
+    D3D11_PRIMITIVE_TOPOLOGY ConvertTopology(PrimitiveType type);
+
     SysHandle& windowHandle;
     IGraphicsDeviceConfig& config;
     std::vector<ViewportData*> viewports;
     std::vector<BufferD3D11*> mappedPointers;
     ID3DUserDefinedAnnotation* mAnnotation;
 };
-
-#else
-class bnGraphicsD3D11 : public IGraphicsDeviceImmediate {
-public:
-    bnGraphicsD3D11(SysHandle& handle, bnGraphicsConfigDX11& config);
-
-    const char* GetAPIName() const {
-        return "D3D11";
-    }
-
-    uint32_t GetAPIVersion() const {
-        return 110;
-    }
-
-    bool IsFeatureSupported(const std::string& feature) const {
-        return false;
-    }
-
-    bool Init() { return false; };
-
-    void BeginFrame() override {};
-
-    void EndFrame() override {};
-
-    void Shutdown() override {};
-    void Present(bool vsync = true) override {};
-    void Resize(long width, long height) override {};
-
-
-    ITexture* CreateTexture(const TextureDesc& desc, const void* initialData = nullptr) override { return nullptr; };
-    IShader* CreateShader(const ShaderDesc& desc) override { return nullptr; };
-    IBuffer* CreateBuffer(const BufferDesc& desc, const void* data = nullptr) override { return nullptr; };
-    IInputLayout* CreateInputLayout(const InputLayoutDesc& desc) override { return nullptr; };
-    ISamplerState* CreateSamplerState(const SamplerStateDesc& desc) override { return nullptr; };
-    IViewPort* CreateViewPort(const ViewPortDesc& desc) override { return nullptr; };
-    IRasterizerState* CreateRasterizerState(const RasterizerDesc& desc) override { return nullptr; };
-    IDepthStencilState* CreateDepthStencilState(const DepthStencilDesc& desc) override { return nullptr; };
-    IBlendState* CreateBlendState(const BlendStateDesc& desc) override { return nullptr; };
-    IRenderTarget* CreateRenderTarget(ITexture* texture) override { return nullptr; };
-    IDepthStencil* CreateDepthStencil(ITexture* texture) override { return nullptr; };
-
-    // Add Releases
-    void ReleaseShader(IShader*) override {};
-    void ReleaseBuffer(IBuffer*) override {};
-    void ReleaseTexture(ITexture*) override {};
-
-    void BindShader(IShader* shader) override {};
-    void BindBuffer(IBuffer* buffer) override {};
-    void BindTexture(ITexture* texture) override {};
-    void BindInputLayout(IInputLayout* layout) override {};
-    void BindSamplerState (ISamplerState* samplerState) override {};
-    void BindViewPort(IViewPort* viewPort) override {};
-    void BindRasterizerState(IRasterizerState*) override {};
-    void BindDepthStencilState(IDepthStencilState*, UINT stencilRef = 0) override {};
-    void BindBlendState(IBlendState*, const float blendFactor[4], UINT sampleMask = 0xFFFFFFFF) override {};
-    void BindRenderTarget(IRenderTarget*, IDepthStencil* = nullptr) override {};
-    void ClearRenderTarget(IRenderTarget* target, const float color[4]) override {};
-    void ClearDepthStencil(IDepthStencil* target, float depth, UINT8 stencil) override {};
-    void DispatchCompute(UINT x, UINT y, UINT z) override {};
-
-    void CopyToBuffer(IBuffer* buffer, void* data, size_t size) override {};
-    void Draw(PrimitiveType type, size_t vertexCount, size_t vertexOffset = 0) override {};
-    void DrawIndexed(PrimitiveType type, IBuffer* indexBuffer, size_t indexCount, size_t indexOffset = 0) override {};
-
-    IDeviceContext* getContext() override { return nullptr; };
-    IDevice* getDevice() override { return nullptr; };
-};
-#endif

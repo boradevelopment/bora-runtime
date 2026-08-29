@@ -10,6 +10,7 @@
 // #include <cstring>
 #include <string>
 #include <iostream>
+
 // #include <vector>
 // #include "SysImageMgr.h"
 // #include "../software/win32/rcscle.h"
@@ -30,6 +31,7 @@
 int
 main(int argc, char *argv[])
 {
+
     VersionLoader::executeLatestVersion(argc, argv);
    // todo: use this in transmission code in latest
    //  char *wasm_file = argv[1];

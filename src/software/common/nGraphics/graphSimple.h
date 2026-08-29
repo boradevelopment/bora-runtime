@@ -65,7 +65,7 @@ inline void CreateDPS(IGraphicsDeviceExplicit* graphics, GraphicsPipelineData* s
 
         // pool sizes
         for (auto& [type, count] : counts) {
-            poolDesc.poolSizes.push_back({ type, count });
+            poolDesc.poolSizes.emplace_back( type, count );
         }
 
         sep->dPool = graphics->CreateDescriptorPool(poolDesc);
@@ -584,14 +584,7 @@ struct ClearRenderTargetCommand : public IGPUCommand
         else {
             auto graphics = (IGraphicsDeviceExplicit*)(graphicsDevice);
             if (target->Exists()) {
-                //if (!sep->plb && !sep->pl) {
-                //    sep->plb = graphics->CreatePipelineBuilder();
-                //}
-                //if (sep->pl) return; // too late.
-
-                //graphics->
-                //// ?
-                //sep->plb->SetRenderTarget(target->Get());
+                // todo!
             }
         }
     }
@@ -756,7 +749,7 @@ struct DestroyResourceCommand : public IGPUCommand
     {
         if (graphicsDevice->GetFlags() & GraphicsDeviceFlags::IS_IMMEDIATE) {
             auto graphics = (IGraphicsDeviceImmediate*)(graphicsDevice);
-            if (!buffer || std::find(relVariables->begin(), relVariables->end(), buffer) != relVariables->end()) {
+            if (!buffer || std::ranges::find(*relVariables, buffer) != relVariables->end()) {
                 return;
             }
 
@@ -835,11 +828,11 @@ public:
     void BindSamplerState(ResourceHandle<ISamplerState>*, u32 = 0);
     void BindViewPort(ResourceHandle<IViewPort>*);
     void BindRasterizerState(ResourceHandle<IRasterizerState>*);
-    void BindDepthStencilState(ResourceHandle<IDepthStencilState>*, UINT stencilRef = 0);
-    void BindBlendState(ResourceHandle<IBlendState>*, const float blendFactor[4] = nullptr, UINT sampleMask = 0xFFFFFFFF);
+    void BindDepthStencilState(ResourceHandle<IDepthStencilState>*, uint stencilRef = 0);
+    void BindBlendState(ResourceHandle<IBlendState>*, const float blendFactor[4] = nullptr, uint sampleMask = 0xFFFFFFFF);
     void BindRenderTarget(ResourceHandle<IRenderTarget>*, ResourceHandle<IDepthStencil>* = nullptr);
     void ClearRenderTarget(ResourceHandle<IRenderTarget>* target, const float color[4] = {});
-    void ClearDepthStencil(ResourceHandle<IDepthStencil>* target, float depth = 0, UINT8 stencil = 0);
+    void ClearDepthStencil(ResourceHandle<IDepthStencil>* target, float depth = 0, u8 stencil = 0);
     void Draw(PrimitiveType type, size_t vertexCount, size_t vertexOffset = 0);
     void CopyToBuffer(ResourceHandle<IBuffer>* buffer, void* data, size_t size);
     void MapBufferMemory(ResourceHandle<IBuffer>* buffer, ResourceHandle<void>* dataPtr);

@@ -14,6 +14,8 @@
 #include <mutex>
 #include <unordered_map>
 #include <algorithm>
+#include <fstream>
+#include <filesystem>
 
 enum class LogLevel {
     TRACE = 0,

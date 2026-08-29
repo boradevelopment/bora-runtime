@@ -7,10 +7,9 @@
  */
 
 #pragma once
-#include <iostream>
-#include <ostream>
+#include <utility>
 
-#include "wasm_export.h"
+#include "wasmtime.hh"
 #include "nCommon/CommandListCategories.h"
 #include "nCommon/Hashing.h"
 #include "host/WasmTools.h"
@@ -19,7 +18,7 @@ struct ICommand
 {
 public:
     virtual ~ICommand() = default;
-    virtual void ExecuteStatic(void* context, wasm_module_inst_t wasmModule = nullptr) = 0;
+    virtual void ExecuteStatic(void* context, wasmtime_context_t* wasmContext = nullptr, const WasmRuntimeModule* wasmModule = nullptr) = 0;
 };
 
 class CommandRegistry
@@ -27,31 +26,36 @@ class CommandRegistry
 public:
 
     static
-void ExecuteCommandBuffer(wasm_module_inst_t moduleInstance, void* context, const uint8_t* data, u64 size)
+void ExecuteCommandBuffer(wasmtime_context_t* moduleContext, const WasmRuntimeModule* wasmModule, void* context, const uint8_t* data, u64 size)
     {
+         auto logger =  LogManager::instance().getLogger("bora.commands");
         u64 offset = 0;
 
         while (offset < size)
         {
             // Read command header
-            SerializedCommandHeader header;
+            SerializedCommandHeader header{};
             memcpy(&header, data + offset, sizeof(SerializedCommandHeader));
             offset += sizeof(SerializedCommandHeader);
+            if (size - offset < header.size)
+            {
+                LOG_ERROR_VERBOSE(logger, 1) << "Payload size (0x" << header.size << ") out of bounds";
+                break;
+            }
 
             // Read payload
             const uint8_t* payload = data + offset;
             offset += header.size;
 
             // Instantiate from registry
-            ICommand* cmd = Instance().Create(header.nameHash, payload);
-            if (cmd)
+            if (ICommand* cmd = Instance().Create(header.nameHash, payload))
             {
-                cmd->ExecuteStatic(context, moduleInstance);
+                cmd->ExecuteStatic(context, moduleContext, wasmModule);
                 delete cmd;
             }
             else
             {
-                printf("Unknown command hash: 0x%llx\n", header.nameHash);
+                LOG_ERROR_VERBOSE(logger, 1) << "Unknown hash of 0x" << header.nameHash;
             }
         }
     }
@@ -61,7 +65,7 @@ void ExecuteCommandBuffer(wasm_module_inst_t moduleInstance, void* context, cons
 
     struct Entry {
         FactoryFunc factory;
-        size_t typeHash;
+        size_t typeHash{};
     };
 
     static CommandRegistry& Instance()
@@ -73,7 +77,7 @@ void ExecuteCommandBuffer(wasm_module_inst_t moduleInstance, void* context, cons
     template <typename Interface = ICommand>
     void Register(uint64_t commandID, FactoryFunc func)
     {
-        factories[commandID] = { func, typeid(Interface).hash_code() };
+        factories[commandID] = { std::move(func), typeid(Interface).hash_code() };
     }
 
     template <typename Interface = ICommand>
@@ -132,12 +136,12 @@ struct TestCommand : public ICommand
     {
     }
 
-    void ExecuteStatic(void* context, wasm_module_inst_t moduleInstance) override
+    void ExecuteStatic(void* context, wasmtime_context_t* moduleContext, const WasmRuntimeModule* moduleInstance) override
     {
-        if (!moduleInstance) return;
-        data.text = WasmTools::fromWASM<const char*>(moduleInstance, (u64)data.text);
+        if (!moduleInstance || !moduleContext) return;
+        data.text = WasmTools::fromWASM<const char*>(moduleContext, moduleInstance, reinterpret_cast<u64>(data.text));
         // data.ints = WasmTools::fromWASM<int*>(moduleInstance, (u64)data.ints);
-        std::cout << "Test command executed! Value:" << data.value << " | Text = "<< data.text << std::endl;
+        // std::cout << "Test command executed! Value:" << data.value << " | Text = "<< data.text << std::endl;
         // for (int* p = data.ints; p < (data.ints + data.intsSize); ++p) {
         //     int val = *p;
         //     std::cout << "Int: " << val << std::endl;

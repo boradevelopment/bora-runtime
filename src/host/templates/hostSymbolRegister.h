@@ -11,7 +11,7 @@ public:
     void add(std::unique_ptr<HostSymbolTemplate> module);
 
     // Calls register_symbols on all modules
-    void register_all();
+    void register_all(wasmtime_linker_t* linker);
 
 private:
     // Store modules in a static vector

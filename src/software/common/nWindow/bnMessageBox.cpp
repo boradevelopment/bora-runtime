@@ -5,6 +5,7 @@
 #include "Utils.h"
 #define DR_MP3_IMPLEMENTATION
 #include "dr_mp3.h"
+#include "windowUtilities.h"
 #include "bskia/include/core/SkGraphics.h"
 #include "nCommon/MemoryCommands.h"
 
@@ -58,7 +59,7 @@ void ResampleFloat(
 ShaderData vD;
 ShaderData pD;
 inline bool bnMessageBox::InitGraphicsSystem() {
-    HRESULT hr;
+    // HRESULT hr;
     int fallback = 0;
 
     audioConfig = IAudioDeviceConfig();
@@ -84,7 +85,7 @@ inline bool bnMessageBox::InitGraphicsSystem() {
         }
 
         if (choice == NONE) {
-            MessageBox(handle, L"Error! Bora does not support your GPU, please consider updating or upgrading your GPU.", L"BORA is not supported for your GPU!", MB_ICONERROR);
+            windowUtilities::createSystemMessageBox(handle, L"Error! Bora does not support your GPU, please consider updating or upgrading your GPU.", L"BORA is not supported for your GPU!", MessageBoxIcon::Error);
             close();
             return false;
         }

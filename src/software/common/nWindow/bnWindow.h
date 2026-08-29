@@ -1,4 +1,7 @@
 #pragma once
+#include "nGUI/GUIRoot.h"
+#include "nGUI/skia/interfaces/IGUIRenderer.h"
+#include "nWindow/linuxWindow.h"
 #ifdef WIN32
 #include "nWindow/win32Window.h"
 #include "avrt.h"
@@ -51,6 +54,13 @@ public:
             "T must derive from bnWindow");
 
         derivedObject = object;
+        audioThread = std::thread([&]() {
+          while (running) {
+              if (rootAudioDevice && !rootAudioDevice->Paused()) {
+                  rootAudioDevice->UpdateFrame();
+              }
+          }
+        });
 #ifdef WIN32
        handle = win32Window::createWindow(object, configuration, isChild);
         audioThread = std::thread([&]() {
@@ -65,13 +75,8 @@ public:
 });
         SetThreadPriority(audioThread.native_handle(), THREAD_PRIORITY_TIME_CRITICAL);
 #elif defined(__linux__)
-        if (std::getenv("WAYLAND_DISPLAY")) {
-
-        } else if (std::getenv("DISPLAY")) {
-
-        } else {
-            std::cout << "No display found!" << std::endl;
-        }
+        handle = linuxWindow::createWindow(object, configuration, isChild);
+        // SetThreadPriority(audioThread.native_handle(), THREAD_PRIORITY_TIME_CRITICAL);
 #elif  defined(__APPLE__)
         handle = darwinWindow::createWindow(object, configuration, isChild);
         // todo: audio engine!
@@ -83,6 +88,8 @@ public:
     virtual void shutdown(bool perm = true) {};
     virtual void run() {};
     virtual void preDestroyFunctions() {};
+    virtual long getWindowHeight() = 0;
+    virtual long getWindowWidth() = 0;
     void close();
     void switchGraphics(GraphicsChoice choice = NONE);
 public: // Functions & Structs
@@ -100,6 +107,8 @@ public: // Functions & Structs
 #ifdef WIN32
         return DefWindowProc(handle, message, w_param, l_param);
 #endif
+
+        return 0;
     }
 public: // DYnamic Variables
     bool firstFrame = true;
@@ -117,6 +126,7 @@ public: // DYnamic Variables
     std::unique_ptr<bnWindowTitlebar> titleBar = nullptr;
     IAudioDevice* rootAudioDevice = nullptr;
     bnAudio* audio = nullptr;
+    GUIRoot* guiManager = nullptr;
     IAudioDeviceConfig audioConfig;
     IGraphicsDevice* rootDevice = nullptr;
     IGraphicsDeviceConfig gEConfig;

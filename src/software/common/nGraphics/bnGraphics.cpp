@@ -162,29 +162,30 @@ void bnGraphics::Submit()
     
     vectorGraphics.shrink_to_fit();
 
+    // ThreadLocal iterates for each registered threadlocal vector that was accessed.
+    // Since there could be multiple registered vectors to represent just ONE command list, not a good idea to destroy anything.
     commands.access([&](auto& cmds) {
         for (auto& cmd : cmds) {
             if (cmd)
                 cmd->Execute(window->rootDevice);
         }
-        cmds.clear();
-        });
-    
-        for (auto& var : relVariables) {
-            if (var && *var) {
-                (*var)->Release();
-                delete* var;
-                *var = nullptr;
-            }
-        }
+    });
 
-        for (auto& var : vectorGraphics) {
-            if (var.get()) {
-                var->Release();
-            }
+    for (auto& var : relVariables) {
+        if (var && *var) {
+            (*var)->Release();
+            delete* var;
+            *var = nullptr;
         }
+    }
 
-        vectorGraphicsAdv.clear();
-    
-        relVariables.clear();
+    for (auto& var : vectorGraphics) {
+        if (var.get()) {
+            var->Release();
+        }
+    }
+
+    commands.clear();
+    vectorGraphicsAdv.clear();
+    relVariables.clear();
   }

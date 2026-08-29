@@ -4,6 +4,8 @@
 #include <set>
 
 #include "bnWindow.h"
+#include "windowUtilities.h"
+#include "nGUI/skia/interfaces/IGUIRenderer.h"
 #include "nGUI/skia/win32/SkiaD3D12Renderer.h"
 
 struct bnWindowTitlebarConfig;
@@ -65,16 +67,19 @@ public:
         bool maximize = false;
         if (configuration->width < 1 && configuration->height < 1) {
             maximize = true;
-            configuration->width = GetSystemMetrics(SM_CXSCREEN); // full screen width
-            configuration->height = GetSystemMetrics(SM_CYSCREEN); // full screen height
+
+            configuration->width = windowUtilities::getScreenWidth(handle);
+            configuration->height = windowUtilities::getScreenHeight(handle);
         }
 
+        width = configuration->width;
+        height = configuration->height;
+
         if (maximize) {
-            ShowWindow(handle, SW_MAXIMIZE);
+            windowUtilities::maximizeWindow(handle);
         }
-        UpdateWindow(handle);
         init();
-        ShowWindow(handle, SW_SHOW);
+        windowUtilities::showWindow(handle);
     }
 
     void run();
@@ -86,14 +91,15 @@ public: // Functions & Structs
 public: // Dynamic Functions
     void shutdown(bool perm = true);
     bool InitGraphicsSystem();
-    void ResizeSwapChain(UINT width, UINT height);
-    void UpdateViewports(UINT width, UINT height);
+    void ResizeSwapChain(uint width, uint height);
+    void UpdateViewports(uint width, uint height);
     void RenderFrame();
     //void FinishUpRenderThread();
     void UpdateTitleBar();
     //void UpdateUserThread();
     void UpdateInputThread();
 public:
+    ResourceHandle<IGUIRenderer> defaultGUIRenderer;
     bool isWASMInitalized = false;
     const char* wasmID = nullptr;
     const void* wasmUpdate = nullptr;
@@ -135,7 +141,6 @@ public:
     ResourceHandle<IDescriptorSet>* set = nullptr;
      std::map<int, bool> firstFrames;
     std::atomic_bool justRendered = false;
-    BITMAP memBitmap;
     ITexture* pendingCachedRender = nullptr;
     ResourceHandle<ITexture> swpText;
     std::atomic<bool> renderReady{ false };
@@ -166,6 +171,8 @@ public:
     InputState currentInputState;
     bnGraphics* userGraphics = nullptr;
     std::thread frozenMessageBoxThread;
+    long getWindowHeight();
+    long getWindowWidth();
     float getHeight() const {
         return vpMain.height;
     }
@@ -175,7 +182,7 @@ public:
 private:
     friend class bnWindowTitlebar;
     friend class bnGraphics;
-public:
-    SkiaD3D12Renderer* guiRenderer;
+    long height;
+    long width;
 };
 

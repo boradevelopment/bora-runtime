@@ -654,7 +654,7 @@ void bnGraphicsOGL::BindBuffer(IBuffer* buffer)
     }
 }
 
-void bnGraphicsOGL::BindTexture(ITexture* texture, u8 slot)
+void bnGraphicsOGL::BindTexture(ITexture* texture, uint slot)
 {
     if (!texture) return;
 
@@ -676,7 +676,7 @@ void bnGraphicsOGL::BindInputLayout(IInputLayout* layout)
     glBindVertexArray(oglLayout->vao);
 }
 
-void bnGraphicsOGL::BindSamplerState(ISamplerState* samplerState, u8 slot)
+void bnGraphicsOGL::BindSamplerState(ISamplerState* samplerState, uint slot)
 {
     if (!samplerState) return;
 

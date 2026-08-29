@@ -1,100 +1,113 @@
-set (WAMR_BUILD_PLATFORM "linux")
-include(${WAMR_ROOT_DIR}/build-scripts/runtime_lib.cmake)
-
-if (NOT DEFINED WAMR_BUILD_TARGET)
-    if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)")
-        set (WAMR_BUILD_TARGET "AARCH64")
-        if (NOT DEFINED WAMR_BUILD_SIMD)
-            set (WAMR_BUILD_SIMD 1)
-        endif ()
-    elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "riscv64")
-        set (WAMR_BUILD_TARGET "RISCV64")
-    elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)
-        # Build as X86_64 by default in 64-bit platform
-        set (WAMR_BUILD_TARGET "X86_64")
-        if (NOT DEFINED WAMR_BUILD_SIMD)
-            set (WAMR_BUILD_SIMD 1)
-        endif ()
-    elseif (CMAKE_SIZEOF_VOID_P EQUAL 4)
-        # Build as X86_32 by default in 32-bit platform
-        set (WAMR_BUILD_TARGET "X86_32")
-    else ()
-        message(SEND_ERROR "Unsupported build target platform!")
-    endif ()
-endif ()
-
-if (WAMR_BUILD_WASI_NN EQUAL 1)
-    set (BUILD_SHARED_LIBS ON)
-endif ()
-
-check_pie_supported()
 
 
-set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS} -Wl,--gc-sections")
 
-set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wall -Wextra -Wformat -Wformat-security -Wshadow")
-# set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Wconversion -Wsign-conversion")
+include_directories(./src/host/templates ../global/cpp ../global/contribs ./src ./src/software/common ./src/software/linux ./contribs ./3rdparty)
 
-set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -Wall -Wextra -Wformat -Wformat-security -Wno-unused")
-
-if (WAMR_BUILD_TARGET MATCHES "X86_.*" OR WAMR_BUILD_TARGET STREQUAL "AMD_64")
-    if (NOT (CMAKE_C_COMPILER MATCHES ".*clang.*" OR CMAKE_C_COMPILER_ID MATCHES ".*Clang"))
-        set (CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -mindirect-branch-register")
-        set (CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -mindirect-branch-register")
-        # UNDEFINED BEHAVIOR, refer to https://en.cppreference.com/w/cpp/language/ub
-    endif ()
-endif ()
-
-include(${WAMR_ROOT_DIR}/core/shared/utils/uncommon/shared_uncommon.cmake)
-include_directories(${WAMR_ROOT_DIR}/product-mini/platforms/common ./src/host/templates ../global/cpp ./src ./src/software/common ./src/software/linux ./contribs ./3rdparty)
+collect_sources(BORA_SOURCES_PLATFORM
+        src/tools/*
+        src/host/*
+        src/software/linux/*
+)
 
 add_compile_definitions(
         TAZABASEDIR=\"${CMAKE_SOURCE_DIR}/contribs/TAZA/code\"
         NOMINMAX
         _WINSOCKAPI_
         GLEW_STATIC
+        LIBWASM_STATIC
+        SPIRV_SKIA_CONFLICT_HACK
 )
 if(ENABLE_ASAN)
-add_link_options("/INFERASANLIBS")
+    add_compile_options("-fsanitize=address" "-fno-omit-frame-pointer")
+    add_link_options("-fsanitize=address")
 endif()
 
 # Executable
 add_executable(BORA
         ${BORA_SOURCES_WRAPPER}
-        ${BORA_SOURCES_CONTRIBWRAPPER} ${BORA_TAZA} ${BORA_3RDPARTY}
+        src/wrapper/mainWrapper.cpp
+        ${CMAKE_CURRENT_BINARY_DIR}/artifacts/resource_wrapper.rc
 )
+
 target_compile_definitions(BORA PRIVATE
         TAZABASEDIR="${CMAKE_SOURCE_DIR}/contribs/TAZA/code"
-        NOMINMAX _WINSOCKAPI_ WRAPPER
+        NOMINMAX _WINSOCKAPI_ WRAPPER SK_VULKAN
 )
-target_compile_options(BORA PRIVATE -include${CMAKE_SOURCE_DIR}/../global/cpp/contribs/TypeDefinitions.h)
+target_compile_options(BORA PRIVATE -I${CMAKE_SOURCE_DIR}/../global/cpp/contribs/TypeDefinitions.h)
 
 
-file(GLOB_RECURSE BORA_SOURCES_CONTRIB_GRAPHICS contribs/bskia/src/* 3rdparty/GLEW/**/*.h)
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(BUILD_TYPE Debug)
+    file(GLOB_RECURSE BORA_LIBS ${CMAKE_SOURCE_DIR}/libs/Debug/*.a)
 else()
-    set(BUILD_TYPE Release)
+    file(GLOB_RECURSE BORA_LIBS ${CMAKE_SOURCE_DIR}/libs/Release/*.a)
 endif()
 
-message(${BUILD_TYPE})
-file(GLOB_RECURSE BORA_SKIA ${CMAKE_SOURCE_DIR}/cached_libs/bskia/${BUILD_TYPE}${ASAN_PREFIX}/*.a)
-file(GLOB_RECURSE BORA_LIBS ${CMAKE_SOURCE_DIR}/libs/Debug/*.a)
-
-add_library(BORA_COMPAT SHARED src/library.def ${BORA_SOURCES} ${BORA_CONTRIBS} ${BORA_TAZA} ${BORA_3RDPARTY})
-target_sources(BORA_COMPAT PRIVATE ${WAMR_RUNTIME_LIB_SOURCE})
-
-find_package(OpenGL REQUIRED)
-
-target_link_libraries(BORA_COMPAT PRIVATE Vulkan::Vulkan ${BORA_SKIA} ${BORA_LIBS} ${LLVM_AVAILABLE_LIBS} ${UV_A_LIBS} -lm -ldl -lpthread OpenGL::GL)
+add_library(BORA_COMPAT SHARED ${BORA_SOURCES_PLATFORM} ${BORA_SOURCES} ${BORA_CONTRIBS} ${BORA_TAZA} ${BORA_3RDPARTY})
+target_link_libraries(BORA_COMPAT PRIVATE ${BORA_SKIA_LIBRARY} ${BORA_LIBS} wasmtime.a)
 target_precompile_headers(BORA_COMPAT PRIVATE
         ../global/cpp/contribs/TypeDefinitions.h
 )
-add_dependencies(BORA_COMPAT skia_all)
+
+bora_check_module(BORA_COMPAT opengl BORA_HAS_OPENGL "OpenGL")
+bora_check_module(BORA_COMPAT vulkan BORA_HAS_VULKAN "VULKAN")
+bora_check_module(BORA_COMPAT gtk4 BORA_HAS_GTK4 "GTK4")
+if(NOT GTK4_FOUND)
+    bora_check_module(BORA_COMPAT gtk3+-3.0 BORA_HAS_GTK3 "GTK4")
+endif()
+bora_check_module(BORA_COMPAT gio-2.0 BORA_HAS_GIO "GIO")
+bora_check_module(BORA_COMPAT wayland-client BORA_HAS_WAYLAND "Wayland")
+if(BORA_HAS_WAYLAND_PKG_FOUND)
+    find_program(WAYLAND_SCANNER wayland-scanner)
+    pkg_get_variable(WAYLAND_PROTOCOLS_DIR wayland-protocols pkgdatadir)
+    set(XDG_SHELL_XML "${WAYLAND_PROTOCOLS_DIR}/stable/xdg-shell/xdg-shell.xml")
+
+    if(WAYLAND_SCANNER AND EXISTS "${XDG_SHELL_XML}")
+        execute_process(
+                COMMAND ${WAYLAND_SCANNER} client-header
+                "${XDG_SHELL_XML}"
+                "${CMAKE_CURRENT_BINARY_DIR}/artifacts/xdg-shell-client-protocol.h"
+        )
+        execute_process(
+                COMMAND ${WAYLAND_SCANNER} private-code
+                "${XDG_SHELL_XML}"
+                "${CMAKE_CURRENT_BINARY_DIR}/artifacts/xdg-shell-protocol.c"
+        )
+
+        target_sources(BORA_COMPAT PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/artifacts/xdg-shell-protocol.c)
+        target_include_directories(BORA_COMPAT PRIVATE ${CMAKE_CURRENT_BINARY_DIR}/artifacts)
+        message(STATUS "BORA: Wayland and xdg-shell bindings generated successfully.")
+    else()
+        message(WARNING "BORA: wayland-scanner or xdg-shell.xml not found. Disabling Wayland backend.")
+    endif()
+endif()
+
+bora_check_module(BORA_COMPAT x11 BORA_HAS_X11 "X11")
+
+add_dependencies(BORA_COMPAT wasmtime_lib)
+
+if (CMAKE_BUILD_TYPE STREQUAL "Debug")
+    add_dependencies(BORA_COMPAT skia_debug)
+else()
+    add_dependencies(BORA_COMPAT skia_release)
+endif()
+
+#
+#if(DEBUGGER)
+#    set_target_properties(BORA_COMPAT PROPERTIES OUTPUT_NAME "LATESTD")
+#    set_target_properties(BORA PROPERTIES OUTPUT_NAME "borad")
+#else()
+#    set_target_properties(BORA_COMPAT PROPERTIES OUTPUT_NAME "LATEST")
+#    set_target_properties(BORA PROPERTIES OUTPUT_NAME "bora")
+#endif()
+
 set_target_properties(BORA_COMPAT PROPERTIES
-        OUTPUT_NAME "LATEST"
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/compatibility"
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/artifacts"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/artifacts"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${SYSTEM_NAME_LOWER}/${ARCH}/compatibility"
 )
-
-
+set_target_properties(BORA PROPERTIES
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${SYSTEM_NAME_LOWER}/${ARCH}"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${SYSTEM_NAME_LOWER}/${ARCH}"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${SYSTEM_NAME_LOWER}/${ARCH}"
+)
 add_dependencies(BORA BORA_COMPAT)

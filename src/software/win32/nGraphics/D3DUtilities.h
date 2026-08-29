@@ -300,7 +300,7 @@ inline D3D12_RESOURCE_STATES ToD3D12ResourceState(ImageLayout layout, ImageAcces
     return state;
 }
 
-inline ShaderData createShaderSPIRVToD3D(Data* dataD){
+inline ShaderData createShaderSPIRVToD3D(Data* dataD, ShaderDesc::Type desc){
     ShaderData sdd{};
     auto data = dataD->getData();
     size_t intCount = data.size() / 4;

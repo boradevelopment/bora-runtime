@@ -1,8 +1,10 @@
+#pragma once
 #include <thread>
 #include <atomic>
 #include <map>
 #include <mutex>
 #include "hostSymbolTemplate.hpp"
+#include "host/LinkerTemplate.h"
 
 class BoraThreadSymbols : public HostSymbolTemplate {
 public:
@@ -14,20 +16,14 @@ public:
    static std::mutex mutex;
 
 public:
-    static int32_t create_thread(wasm_exec_env_t exec_env, u64 func_ptr, int32_t arg);
-    static int32_t join_thread(wasm_exec_env_t exec_env, u64 thread_id);
-    std::vector<NativeSymbol> symbols = {
-            {
-                    "createThread",
-                    (void*)create_thread,
-                    "(Ii)i",
-                    nullptr
-            },
-{"joinThread",   (void*)join_thread,   "(I)i",  nullptr}
-    };
+    static int32_t create_thread(wasmtime_caller_t* moduleCaller, wasmtime_context_t* moduleContext, u64 func_ptr, int32_t arg);
+    static int32_t join_thread(wasmtime_caller_t* moduleCaller, wasmtime_context_t* moduleContext, u64 thread_id);
 
-    const std::vector<NativeSymbol>& get_symbols() const override {
-        return symbols;
+    void bind_symbols(wasmtime_linker_t* linker) const override
+    {
+        const char* ns = get_namespace();
+        LinkerTemplate::Function(linker, ns, "createThread", create_thread);
+        LinkerTemplate::Function(linker, ns, "joinThread", join_thread);
     }
 };
 

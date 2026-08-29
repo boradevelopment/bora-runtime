@@ -1,20 +1,40 @@
-#pragma once
 #include "bnGraphicsVK.h"
+#include <cstring>
+#include <ranges>
 
+#include "nWindow/linuxAbstracts.h"
+#ifdef WIN32
+#include <vulkan/vulkan_win32.h>
+#elif defined(__linux__)
+#include <vulkan/vulkan_wayland.h>
+#include <vulkan/vulkan_xlib.h>
+#elif defined(__apple__)
+#endif
+
+#if defined(Always)
+  #undef Always
+#endif
+
+#if defined(None)
+  #undef None
+#endif
 static PFN_vkCmdBeginDebugUtilsLabelEXT fpCmdBeginDebugUtilsLabelEXT = nullptr;
 static PFN_vkCmdEndDebugUtilsLabelEXT   fpCmdEndDebugUtilsLabelEXT   = nullptr;
 static PFN_vkCmdInsertDebugUtilsLabelEXT fpCmdInsertDebugUtilsLabelEXT = nullptr;
 
-struct QueueFamilyIndices {
-    u32 graphicsFamily = 0;
-    u32 presentFamily = 0;
+namespace
+{
+    struct QueueFamilyIndices {
+        u32 graphicsFamily = 0;
+        u32 presentFamily = 0;
 
-    [[nodiscard]] bool isComplete() const {
-        return graphicsFamily > 0 && presentFamily > 0;
-    }
-};
+        [[nodiscard]] bool isComplete() const {
+            return graphicsFamily > 0 && presentFamily > 0;
+        }
+    };
+}
 
-QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface) {
+static QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surface) {
     QueueFamilyIndices indices;
 
     uint32_t queueFamilyCount = 0;
@@ -49,7 +69,7 @@ QueueFamilyIndices FindQueueFamilies(VkPhysicalDevice device, VkSurfaceKHR surfa
 }
 
 
-VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
+VKAPI_ATTR static VkBool32 VKAPI_CALL debugCallback(
     VkDebugUtilsMessageSeverityFlagBitsEXT       messageSeverity,
     VkDebugUtilsMessageTypeFlagsEXT              messageTypes,
     const VkDebugUtilsMessengerCallbackDataEXT* pCallbackData,
@@ -61,10 +81,10 @@ VKAPI_ATTR VkBool32 VKAPI_CALL debugCallback(
     return VK_FALSE; // return true to abort the call that triggered the validation message
 }
 
-VkDebugUtilsMessengerEXT debugMessenger;
+static VkDebugUtilsMessengerEXT debugMessenger;
 
 //#ifdef _DEBUG
-void setupDebugMessenger(VkInstance instance) {
+static void setupDebugMessenger(VkInstance instance) {
     VkDebugUtilsMessengerCreateInfoEXT createInfo{};
     createInfo.sType = VK_STRUCTURE_TYPE_DEBUG_UTILS_MESSENGER_CREATE_INFO_EXT;
     createInfo.messageSeverity =
@@ -79,8 +99,7 @@ void setupDebugMessenger(VkInstance instance) {
     createInfo.pfnUserCallback = debugCallback;
     createInfo.pUserData = nullptr;
 
-    auto func = (PFN_vkCreateDebugUtilsMessengerEXT)
-        vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT");
+    auto func = reinterpret_cast<PFN_vkCreateDebugUtilsMessengerEXT>(vkGetInstanceProcAddr(instance, "vkCreateDebugUtilsMessengerEXT"));
 
     if (func != nullptr) {
         if (func(instance, &createInfo, nullptr, &debugMessenger) != VK_SUCCESS) {
@@ -90,10 +109,13 @@ void setupDebugMessenger(VkInstance instance) {
 }
 //#endif
 
-bnGraphicsVK::bnGraphicsVK(SysHandle& handle, IGraphicsDeviceConfig& config) : handle(handle), config(config)
+bnGraphicsVK::bnGraphicsVK(SysHandle& handle, IGraphicsDeviceConfig& config) : config(config), handle(handle),
+                                                                               device(),
+                                                                               swapchainImageFormat(),
+                                                                               msaaSamples()
 {
-  
 }
+
 #pragma optimize("", off)
 bool bnGraphicsVK::Init()
 {
@@ -139,7 +161,7 @@ bool bnGraphicsVK::Init()
     }
 #endif
 
-    instanceInfo.enabledLayerCount = (uint32_t)validationLayers.size();
+    instanceInfo.enabledLayerCount = static_cast<uint32_t>(validationLayers.size());
     instanceInfo.ppEnabledLayerNames = validationLayers.empty() ? nullptr : validationLayers.data();
 
     instanceInfo.enabledExtensionCount = static_cast<uint32_t>(extensions.size());
@@ -161,6 +183,36 @@ bool bnGraphicsVK::Init()
 
     if (vkCreateWin32SurfaceKHR(instance, &surfaceInfo, nullptr, &surface) != VK_SUCCESS) {
         return false;
+    }
+#elif defined(__linux__)
+    if (handle->type == DisplayServerType::Wayland)
+    {
+        VkWaylandSurfaceCreateInfoKHR surfaceInfo{};
+        surfaceInfo.display = handle->wayland.display;
+        surfaceInfo.surface = handle->wayland.surface;
+        surfaceInfo.pNext   = nullptr;
+        surfaceInfo.flags   = 0;
+        surfaceInfo.sType = VK_STRUCTURE_TYPE_WAYLAND_SURFACE_CREATE_INFO_KHR;
+
+        if (vkCreateWaylandSurfaceKHR(instance, &surfaceInfo, nullptr, &surface) != VK_SUCCESS)
+        {
+            return false;
+        }
+    }
+
+    if (handle->type == DisplayServerType::X11)
+    {
+        VkXlibSurfaceCreateInfoKHR surfaceInfo{};
+        surfaceInfo.window = handle->x11.window;
+        surfaceInfo.pNext  = nullptr;
+        surfaceInfo.flags  = 0;
+        surfaceInfo.dpy    = handle->x11.display;
+        surfaceInfo.sType = VK_STRUCTURE_TYPE_XLIB_SURFACE_CREATE_INFO_KHR;
+
+        if (vkCreateXlibSurfaceKHR(instance, &surfaceInfo, nullptr, &surface) != VK_SUCCESS)
+        {
+            return false;
+        }
     }
 #endif
 
@@ -225,7 +277,6 @@ bool bnGraphicsVK::Init()
     vkGetPhysicalDeviceSurfaceCapabilitiesKHR(physicalDevice, surface, &surfaceCapabilities);
 
     config.framesInFlight--;
-
     if (surfaceCapabilities.minImageCount > config.framesInFlight) {
         config.framesInFlight = surfaceCapabilities.minImageCount;
     }
@@ -248,9 +299,9 @@ bool bnGraphicsVK::Init()
     }
 
 
-    copyPool = (CommandPoolVK*)CreateCommandPool({
-            0, true, true
-        });
+    copyPool = dynamic_cast<CommandPoolVK*>(CreateCommandPool({
+        0, true, true
+    }));
 
     for (int i = 0; i < config.framesInFlight; i++) {
         VkCommandBufferAllocateInfo allocInfo{};
@@ -340,7 +391,7 @@ void bnGraphicsVK::BeginFrame()
     free = false;
 }
 
-void TransitionImageLayout(
+static void TransitionImageLayout(
     VkCommandBuffer cmd,
     VkImage image,
     VkFormat format,
@@ -439,16 +490,16 @@ void bnGraphicsVK::EndFrame()
     VkRenderPass cRenderPass = swpchTarget->renderPass;
    
     for (auto draw : pDraws) {
-        bool hasCHanged = false;
+        // bool hasCHanged = false;
         if (draw.pipeline) {
-            PipelineVK* vkPipeline = static_cast<PipelineVK*>(draw.pipeline);
+            auto* vkPipeline = dynamic_cast<PipelineVK*>(draw.pipeline);
 
             if (!vkPipeline || !vkPipeline->pipeline) return;
             //if (cRenderPass != swpchTarget->renderPass) {
-                if (vkPipeline->renderTarget && vkPipeline->renderTarget->GetNativeHandle() && cRenderPass != (VkRenderPass)vkPipeline->renderTarget->GetNativeHandle()) {
-                    cRenderPass = (VkRenderPass)vkPipeline->renderTarget->GetNativeHandle();
+                if (vkPipeline->renderTarget && vkPipeline->renderTarget->GetNativeHandle() && cRenderPass != static_cast<VkRenderPass>(vkPipeline->renderTarget->GetNativeHandle())) {
+                    cRenderPass = static_cast<VkRenderPass>(vkPipeline->renderTarget->GetNativeHandle());
                     std::array<VkClearValue, 3> clearValues{};
-                    hasCHanged = true;
+                    // hasCHanged = true;
                     if(config.enableMSAA){
                         clearValues[0].color = { {config.clearColor.r, config.clearColor.g, config.clearColor.b, 1.0f} };
                         clearValues[2].depthStencil.depth = 1.0f;  // far plane
@@ -479,12 +530,12 @@ void bnGraphicsVK::EndFrame()
         }
 
         if (draw.buffer) {
-            BufferVK* vkBuffer = static_cast<BufferVK*>(draw.buffer);
+            auto* vkBuffer = dynamic_cast<BufferVK*>(draw.buffer);
           VkDeviceSize offsets[] = { 0 };
             vkCmdBindVertexBuffers(draw.cmdBuffer, 0, 1, &vkBuffer->buffer, offsets);
         }
         if (draw.ds) {
-            DescriptorSetVK* vkSet = static_cast<DescriptorSetVK*>(draw.ds);
+            auto vkSet = dynamic_cast<DescriptorSetVK*>(draw.ds);
 
             if (!vkSet || !vkSet->pipeline) return;
         
@@ -495,7 +546,7 @@ void bnGraphicsVK::EndFrame()
         }
 
         if (draw.pipeline) {
-            PipelineVK* vkPipeline = static_cast<PipelineVK*>(draw.pipeline);
+            auto* vkPipeline = dynamic_cast<PipelineVK*>(draw.pipeline);
 
             if (!vkPipeline || !vkPipeline->pipeline) return;
 
@@ -505,19 +556,19 @@ void bnGraphicsVK::EndFrame()
         }
     
         if (draw.viewport) {
-            auto* viewport = static_cast<ViewportVK*>(draw.viewport);
+            auto* viewport = dynamic_cast<ViewportVK*>(draw.viewport);
             if (!viewport) return;
 
             vkCmdSetViewport(draw.cmdBuffer, 0, 1, &viewport->viewport);
         }
         if (draw.scissor) {
-            auto* viewport = static_cast<ViewportVK*>(draw.scissor);
+            auto* viewport = dynamic_cast<ViewportVK*>(draw.scissor);
             if (!viewport) return;
 
             vkCmdSetScissor(draw.cmdBuffer, 0, 1, &viewport->scissor);
         }
         if (draw.indexBuffer) {
-            BufferVK* vkBuffer = static_cast<BufferVK*>(draw.indexBuffer);
+            auto vkBuffer = dynamic_cast<BufferVK*>(draw.indexBuffer);
 
             vkCmdBindIndexBuffer(draw.cmdBuffer, vkBuffer->buffer, 0,
                 VK_INDEX_TYPE_UINT32);
@@ -615,12 +666,12 @@ void bnGraphicsVK::Present()
     currentFrame = (currentFrame + 1) % config.framesInFlight;
 }
 
-void bnGraphicsVK::Resize(long width, long height)
+void bnGraphicsVK::Resize(long changedWidth, long changedHeight)
 {
-    if (width == this->width && height == this->height) return;
+    if (changedWidth == this->width && changedHeight == this->height) return;
 
-    this->width = width;
-    this->height = height;
+    this->width = changedWidth;
+    this->height = changedHeight;
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
     vkDeviceWaitIdle(device);
   
@@ -657,7 +708,7 @@ void bnGraphicsVK::Resize(long width, long height)
     }
 
     if (depthStencil) {
-        vkDestroyImageView(device, ((DepthStencilVK*)depthStencil)->depthView, nullptr);
+        vkDestroyImageView(device, dynamic_cast<DepthStencilVK*>(depthStencil)->depthView, nullptr);
         delete depthStencil;
     }
 
@@ -775,7 +826,7 @@ void bnGraphicsVK::Shutdown()
     if (swapChain != VK_NULL_HANDLE)
         vkDestroySwapchainKHR(device, swapChain, nullptr);
 
-    for (auto pool : commandBuffer) {
+    for (const auto& pool : commandBuffer) {
         vkFreeCommandBuffers(
             device,            // VkDevice
             pool,       // VkCommandPool that allocated them
@@ -792,7 +843,7 @@ void bnGraphicsVK::Shutdown()
     }
 
     if (depthStencil) {
-        vkDestroyImageView(device, ((DepthStencilVK*)depthStencil)->depthView, nullptr);
+        vkDestroyImageView(device, dynamic_cast<DepthStencilVK*>(depthStencil)->depthView, nullptr);
         delete depthStencil;
     }
 
@@ -839,7 +890,8 @@ void bnGraphicsVK::Shutdown()
 
     // Debug messenger (validation layers)
     if (debugMessenger != VK_NULL_HANDLE) {
-        auto func = (PFN_vkDestroyDebugUtilsMessengerEXT)vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT");
+        auto func = reinterpret_cast<PFN_vkDestroyDebugUtilsMessengerEXT>(
+            vkGetInstanceProcAddr(instance, "vkDestroyDebugUtilsMessengerEXT"));
         if (func != nullptr) {
             func(instance, debugMessenger, nullptr);
         }
@@ -852,96 +904,10 @@ void bnGraphicsVK::Shutdown()
     }
 }
 
-VkFormat ToVkFormat(TextureFormat format)
-{
-    switch (format)
-    {
-    case TextureFormat::RGBA8_UNorm:        return VK_FORMAT_R8G8B8A8_UNORM;
-    case TextureFormat::RGBA8_UNorm_SRGB:   return VK_FORMAT_R8G8B8A8_SRGB;
-    case TextureFormat::BGRA8_UNorm:        return VK_FORMAT_B8G8R8A8_UNORM;
-    case TextureFormat::BGRA8_UNorm_SRGB:   return VK_FORMAT_B8G8R8A8_SRGB;
-
-    case TextureFormat::RGBA16_Float:       return VK_FORMAT_R16G16B16A16_SFLOAT;
-    case TextureFormat::R16_Float:          return VK_FORMAT_R16_SFLOAT;
-    case TextureFormat::R16_UNorm:          return VK_FORMAT_R16_UNORM;
-
-    case TextureFormat::R32_Float:          return VK_FORMAT_R32_SFLOAT;
-    case TextureFormat::RG32_Float:         return VK_FORMAT_R32G32_SFLOAT;
-    case TextureFormat::RGBA32_Float:       return VK_FORMAT_R32G32B32A32_SFLOAT;
-
-    case TextureFormat::D24_UNorm_S8_UInt:  return VK_FORMAT_D24_UNORM_S8_UINT;
-    case TextureFormat::D32_Float:          return VK_FORMAT_D32_SFLOAT;
-    case TextureFormat::D32_Float_S8X24_UInt: return VK_FORMAT_D32_SFLOAT_S8_UINT;
-
-    default:
-        throw std::runtime_error("Unsupported TextureFormat for Vulkan!");
-    }
-}
-
-TextureFormat FromVkFormat(VkFormat format)
-{
-    switch (format)
-    {
-    case VK_FORMAT_R8G8B8A8_UNORM:       return TextureFormat::RGBA8_UNorm;
-    case VK_FORMAT_R8G8B8A8_SRGB:        return TextureFormat::RGBA8_UNorm_SRGB;
-    case VK_FORMAT_B8G8R8A8_UNORM:       return TextureFormat::BGRA8_UNorm;
-    case VK_FORMAT_B8G8R8A8_SRGB:        return TextureFormat::BGRA8_UNorm_SRGB;
-
-    case VK_FORMAT_R16G16B16A16_SFLOAT:  return TextureFormat::RGBA16_Float;
-    case VK_FORMAT_R16_SFLOAT:           return TextureFormat::R16_Float;
-    case VK_FORMAT_R16_UNORM:            return TextureFormat::R16_UNorm;
-
-    case VK_FORMAT_R32_SFLOAT:           return TextureFormat::R32_Float;
-    case VK_FORMAT_R32G32_SFLOAT:        return TextureFormat::RG32_Float;
-    case VK_FORMAT_R32G32B32A32_SFLOAT:  return TextureFormat::RGBA32_Float;
-
-    case VK_FORMAT_D24_UNORM_S8_UINT:    return TextureFormat::D24_UNorm_S8_UInt;
-    case VK_FORMAT_D32_SFLOAT:           return TextureFormat::D32_Float;
-    case VK_FORMAT_D32_SFLOAT_S8_UINT:   return TextureFormat::D32_Float_S8X24_UInt;
-
-    default:
-        throw std::runtime_error("Unsupported VkFormat for TextureFormat!");
-    }
-}
-
-
-
 IPipelineBuilder* bnGraphicsVK::CreatePipelineBuilder()
 {
     return new PipelineBuilderVK(config, &releasePipelines, device, (RenderTargetVK*)swpchTarget);
 }
-
-bool IsDepthFormat(VkFormat format)
-{
-    switch (format)
-    {
-    case VK_FORMAT_D16_UNORM:
-    case VK_FORMAT_D24_UNORM_S8_UINT:
-    case VK_FORMAT_D32_SFLOAT:
-    case VK_FORMAT_D32_SFLOAT_S8_UINT:
-        return true;
-    default:
-        return false;
-    }
-}
-
-VkImageAspectFlags GetAspectFlags(VkFormat format)
-{
-    switch (format)
-    {
-    case VK_FORMAT_D16_UNORM:
-    case VK_FORMAT_D32_SFLOAT:
-        return VK_IMAGE_ASPECT_DEPTH_BIT;
-
-    case VK_FORMAT_D24_UNORM_S8_UINT:
-    case VK_FORMAT_D32_SFLOAT_S8_UINT:
-        return VK_IMAGE_ASPECT_DEPTH_BIT | VK_IMAGE_ASPECT_STENCIL_BIT;
-
-    default:
-        return VK_IMAGE_ASPECT_COLOR_BIT;
-    }
-}
-
 
 
 ITexture* bnGraphicsVK::CreateTexture(const TextureDesc& desc, const void* initialData)
@@ -1040,6 +1006,9 @@ IBuffer* bnGraphicsVK::CreateBuffer(const BufferDesc& desc, const void* data)
     case BufferType::Staging:
         usage = VK_BUFFER_USAGE_TRANSFER_SRC_BIT;
         break;
+    default:
+        break;
+        ;
     }
 
     if (data && desc.type != BufferType::Staging)
@@ -1095,7 +1064,7 @@ IBuffer* bnGraphicsVK::CreateBuffer(const BufferDesc& desc, const void* data)
                 std::memcpy(bufferVK->dataBuffer.data(), data, bufferVK->dataBuffer.size());
 
                 for (size_t i = 0; i < desc.size; i++) {
-                    float* vertex = reinterpret_cast<float*>(bufferVK->dataBuffer.data() + i * desc.stride);
+                    auto vertex = reinterpret_cast<float*>(bufferVK->dataBuffer.data() + i * desc.stride);
 
                     if (desc.stride >= sizeof(float) * 2) {
                         vertex[1] = -vertex[1]; // Flip Y
@@ -1142,7 +1111,7 @@ IBuffer* bnGraphicsVK::CreateBuffer(const BufferDesc& desc, const void* data)
             memcpy(mapped, bufferVK->dataBuffer.empty() ? data : bufferVK->dataBuffer.data(), bufferInfo.size);
             vkUnmapMemory(device, bufferVK->stagingMemory);
 
-            auto copyCmd = (CommandBufferVK*)BeginSingleTimeCommands(copyPool);
+            auto copyCmd = dynamic_cast<CommandBufferVK*>(BeginSingleTimeCommands(copyPool));
 
             VkBufferCopy copyRegion{};
             copyRegion.srcOffset = 0;
@@ -1186,32 +1155,6 @@ IBlendState* bnGraphicsVK::CreateBlendState(const BlendStateDesc& desc)
 {
     return new BlendStateVK(desc);
 }
-
-VkImageUsageFlags ToVkUsage(ImageUsage usage) {
-    VkImageUsageFlags flags = 0;
-    if ((usage & ImageUsage::ColorAttachment) != ImageUsage::None) flags |= VK_IMAGE_USAGE_COLOR_ATTACHMENT_BIT;
-    if ((usage & ImageUsage::DepthStencil) != ImageUsage::None) flags |= VK_IMAGE_USAGE_DEPTH_STENCIL_ATTACHMENT_BIT;
-    if ((usage & ImageUsage::Sampled) != ImageUsage::None) flags |= VK_IMAGE_USAGE_SAMPLED_BIT;
-    if ((usage & ImageUsage::Storage) != ImageUsage::None) flags |= VK_IMAGE_USAGE_STORAGE_BIT;
-    if ((usage & ImageUsage::TransferSrc) != ImageUsage::None) flags |= VK_IMAGE_USAGE_TRANSFER_SRC_BIT;
-    if ((usage & ImageUsage::TransferDst) != ImageUsage::None) flags |= VK_IMAGE_USAGE_TRANSFER_DST_BIT;
-    if ((usage & ImageUsage::InputAttachment) != ImageUsage::None) flags |= VK_IMAGE_USAGE_INPUT_ATTACHMENT_BIT;
-    return flags;
-}
-
-VkImageLayout ToVkLayout(ImageLayout layout) {
-    switch (layout) {
-    case ImageLayout::Undefined: return VK_IMAGE_LAYOUT_UNDEFINED;
-    case ImageLayout::RenderTarget: return VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-    case ImageLayout::DepthStencil: return VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-    case ImageLayout::ShaderRead: return VK_IMAGE_LAYOUT_SHADER_READ_ONLY_OPTIMAL;
-    case ImageLayout::Present: return VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    case ImageLayout::CopySrc: return VK_IMAGE_LAYOUT_TRANSFER_SRC_OPTIMAL;
-    case ImageLayout::CopyDst: return VK_IMAGE_LAYOUT_TRANSFER_DST_OPTIMAL;
-    }
-    return VK_IMAGE_LAYOUT_UNDEFINED;
-}
-
 
 IRenderTarget* bnGraphicsVK::CreateRenderTarget(const RenderTargetDesc& desc)
 {
@@ -1278,8 +1221,7 @@ IRenderTarget* bnGraphicsVK::CreateRenderTarget(const RenderTargetDesc& desc)
     VkAttachmentReference depthRef{};
     bool hasDepth = false;
     if (desc.depth) {
-        auto vkDepth = dynamic_cast<DepthStencilVK*>(desc.depth);
-        if (vkDepth) {
+        if (auto vkDepth = dynamic_cast<DepthStencilVK*>(desc.depth)) {
             hasDepth = true;
 
             VkAttachmentDescription attach{};
@@ -1326,6 +1268,7 @@ IRenderTarget* bnGraphicsVK::CreateRenderTarget(const RenderTargetDesc& desc)
     // ---------------------- Framebuffer ----------------------
     if (desc.makeFramebuffer) {
         std::vector<VkImageView> fbAttachments;
+        fbAttachments.reserve(renderTarget->textures.size());
         for (auto tex : renderTarget->textures)
             fbAttachments.push_back(tex->imageView);
         if (hasDepth)
@@ -1359,8 +1302,8 @@ IDepthStencil* bnGraphicsVK::CreateDepthStencil(ITexture* texture)
         return nullptr;
     }
 
-    auto depthStencil = new DepthStencilVK();
-    depthStencil->texture = texture;
+    auto localDepthStencil = new DepthStencilVK();
+    localDepthStencil->texture = texture;
 
     VkImageViewCreateInfo viewInfo{};
     viewInfo.sType = VK_STRUCTURE_TYPE_IMAGE_VIEW_CREATE_INFO;
@@ -1375,13 +1318,13 @@ IDepthStencil* bnGraphicsVK::CreateDepthStencil(ITexture* texture)
     viewInfo.subresourceRange.baseArrayLayer = 0;
     viewInfo.subresourceRange.layerCount = 1;
 
-    VkResult res = vkCreateImageView(device, &viewInfo, nullptr, &depthStencil->depthView);
+    VkResult res = vkCreateImageView(device, &viewInfo, nullptr, &localDepthStencil->depthView);
     if (res != VK_SUCCESS) {
-        delete depthStencil;
+        delete localDepthStencil;
         return nullptr;
     }
 
-    return depthStencil;
+    return localDepthStencil;
 }
 
 ICommandPool* bnGraphicsVK::CreateCommandPool(CommandPoolDesc desc)
@@ -1403,8 +1346,6 @@ void bnGraphicsVK::WaitForNewFrame()
 {
     vkWaitForFences(device, 1, &inFlightFences[currentFrame], VK_TRUE, UINT64_MAX);
     vkDeviceWaitIdle(device);
-
-    return;
 }
 
 ICommandBuffer* bnGraphicsVK::BeginSingleTimeCommands(ICommandPool* pool)
@@ -1475,22 +1416,22 @@ void bnGraphicsVK::CopyToBuffer(IBuffer* buffer, ICommandBuffer* cmd, void* data
         stagingDesc.size = size;
         stagingDesc.type = BufferType::Staging;
 
-        vBuffer->mStagingBuffer = CreateBuffer(stagingDesc);
+        vBuffer->mStagingBuffer = CreateBuffer(stagingDesc, nullptr);
 
         // Upload data to staging
         void* mapped;
-        vkMapMemory(device, ((BufferVK*)vBuffer->mStagingBuffer)->memory, 0, size, 0, &mapped);
+        vkMapMemory(device, dynamic_cast<BufferVK*>(vBuffer->mStagingBuffer)->memory, 0, size, 0, &mapped);
         memcpy(mapped, data, size);
-        vkUnmapMemory(device, ((BufferVK*)vBuffer->mStagingBuffer)->memory);
+        vkUnmapMemory(device, dynamic_cast<BufferVK*>(vBuffer->mStagingBuffer)->memory);
 
         // --- Record copy command ---
-        VkCommandBuffer cmdBuf = (VkCommandBuffer)cmd->GetNativeHandle();
+        auto cmdBuf = static_cast<VkCommandBuffer>(cmd->GetNativeHandle());
         VkBufferCopy copyRegion{};
         copyRegion.srcOffset = 0;
         copyRegion.dstOffset = 0;
         copyRegion.size = size;
 
-        vkCmdCopyBuffer(cmdBuf, ((BufferVK*)vBuffer->mStagingBuffer)->buffer, vBuffer->buffer, 1, &copyRegion);
+        vkCmdCopyBuffer(cmdBuf, dynamic_cast<BufferVK*>(vBuffer->mStagingBuffer)->buffer, vBuffer->buffer, 1, &copyRegion);
         //Release the buffer now
         ReleaseBuffer(&vBuffer->mStagingBuffer);
         /*vBuffer->mStagingBuffer->Release();
@@ -1647,21 +1588,21 @@ void bnGraphicsVK::ClearPendingReleases()
     cbRelease.clear();
 
     for (auto pipeline : releasePipelines) {
-        auto it = std::find_if(pDraws.begin(), pDraws.end(),
-            [=](const PendingDrawVK& p) { return p.pipeline == pipeline; });
+        auto it = std::ranges::find_if(pDraws,
+                                       [=](const PendingDrawVK& p) { return p.pipeline == pipeline; });
 
         if (it != pDraws.end()) {
             continue;
         }
 
-        for (auto ds : pipeline->descriptorSets) { 
-            if (device && ds.second->descriptorSet != VK_NULL_HANDLE && pipeline->descriptorPool->pool != VK_NULL_HANDLE) {
-                vkFreeDescriptorSets(device, pipeline->descriptorPool->pool, 1, &ds.second->descriptorSet);
-                ds.second->descriptorSet = VK_NULL_HANDLE;
+        for (auto set : pipeline->descriptorSets | std::views::values) {
+            if (device && set->descriptorSet != VK_NULL_HANDLE && pipeline->descriptorPool->pool != VK_NULL_HANDLE) {
+                vkFreeDescriptorSets(device, pipeline->descriptorPool->pool, 1, &set->descriptorSet);
+                set->descriptorSet = VK_NULL_HANDLE;
             }
 
             //ds.second->~DescriptorSetVK();
-            delete ds.second;
+            delete set;
         }
         pipeline->descriptorSets.clear();
 
@@ -1680,7 +1621,7 @@ void bnGraphicsVK::ClearPendingReleases()
     releasePipelines.clear();
     for (auto bufPtr : bufferRelease) {
         if (bufPtr && *bufPtr) {
-            auto buffer = (BufferVK*)*bufPtr;
+            auto buffer = dynamic_cast<BufferVK*>(*bufPtr);
             delete buffer;
             *bufPtr = nullptr;
         }
@@ -1689,7 +1630,7 @@ void bnGraphicsVK::ClearPendingReleases()
 
     for (auto bufPtr : shaderRelease) {
         if (bufPtr && *bufPtr) {
-            auto shader = (ShaderVK*)*bufPtr;
+            auto shader = dynamic_cast<ShaderVK*>(*bufPtr);
             delete shader;
             *bufPtr = nullptr;
         }
@@ -1698,7 +1639,7 @@ void bnGraphicsVK::ClearPendingReleases()
 
     for (auto tex : textureRelease) {
         if (tex && *tex) {
-            auto texture = (TextureVK*)*tex;
+            auto texture = dynamic_cast<TextureVK*>(*tex);
             if (!texture->owner && texture->imageView) { //std::find(swapChainImages.begin(), swapChainImages.end(), texture->image) != swapChainImages.end()
                     vkDestroyImageView(device, texture->imageView, nullptr);                
             }
@@ -1722,14 +1663,14 @@ void bnGraphicsVK::ClearPendingReleases()
 
     for (auto cmdBuffer : releaseCommandBuffers) {
         if (cmdBuffer) {
-            auto it = std::find_if(pDraws.begin(), pDraws.end(), 
-                [=](const PendingDrawVK& p) { return p.cmdBuffer == cmdBuffer->cmdBuffer; });
+            auto it = std::ranges::find_if(pDraws,
+                                           [=](const PendingDrawVK& p) { return p.cmdBuffer == cmdBuffer->cmdBuffer; });
 
             if (it != pDraws.end()) {
                 continue;
             }
             delete cmdBuffer;
-            auto iteration = std::find(commandLists.begin(), commandLists.end(), cmdBuffer);
+            auto iteration = std::ranges::find(commandLists, cmdBuffer);
             if (iteration != commandLists.end()) {
                 *iteration = nullptr;
             }
@@ -1741,8 +1682,8 @@ void bnGraphicsVK::ClearPendingReleases()
     for (auto pool : descriptorPoolRelease) {
 
         if (pool && *pool) {
-            auto it = std::find_if(pDraws.begin(), pDraws.end(),
-                [=](const PendingDrawVK& p) { return ((PipelineVK*)p.pipeline)->descriptorPool == (IDescriptorPool*)pool; });
+            auto it = std::ranges::find_if(pDraws,
+                                           [=](const PendingDrawVK& p) { return dynamic_cast<PipelineVK*>(p.pipeline)->descriptorPool == reinterpret_cast<IDescriptorPool*>(pool); });
 
             if (it != pDraws.end()) {
                 continue;
@@ -1758,13 +1699,13 @@ void bnGraphicsVK::ClearPendingReleases()
 
     for (auto layout : descriptorSetLayoutRelease) {
         if (layout && *layout) {
-            auto it = std::find_if(pDraws.begin(), pDraws.end(),
-                [=](const PendingDrawVK& p) { return ((PipelineVK*)p.pipeline)->descriptorSetLayout == (IDescriptorSetLayout*)layout; });
+            auto it = std::ranges::find_if(pDraws,
+                                           [=](const PendingDrawVK& p) { return dynamic_cast<PipelineVK*>(p.pipeline)->descriptorSetLayout == reinterpret_cast<IDescriptorSetLayout*>(layout); });
 
             if (it != pDraws.end()) {
                 continue;
             }
-            auto vkLayout = ((DescriptorSetLayoutVK*)*layout);
+            auto vkLayout = dynamic_cast<DescriptorSetLayoutVK*>(*layout);
             //vkLayout->~DescriptorSetLayoutVK();
             delete vkLayout;
             *layout = nullptr;
@@ -1783,6 +1724,7 @@ void bnGraphicsVK::ClearPendingReleases()
 
     samplerRelease.clear();
 
+    // unsafe.
     for (auto voids : pendVoids) {
         if (voids) {
             delete voids;
@@ -1806,7 +1748,6 @@ void bnGraphicsVK::PushGroup(const char *name, uint32_t color) {
     VkDebugUtilsLabelEXT labelInfo = { VK_STRUCTURE_TYPE_DEBUG_UTILS_LABEL_EXT };
     labelInfo.pLabelName = name;
 
-    // Vulkan colors are 4 floats (RGBA). Unpack your uint32_t.
     labelInfo.color[0] = ((color >> 16) & 0xFF) / 255.0f; // R
     labelInfo.color[1] = ((color >> 8) & 0xFF) / 255.0f;  // G
     labelInfo.color[2] = (color & 0xFF) / 255.0f;         // B
@@ -1885,7 +1826,7 @@ void bnGraphicsVK::CreateSwapChain()
         extent.height = std::max(surfaceCapabilities.minImageExtent.height, std::min(surfaceCapabilities.maxImageExtent.height, extent.height));
     }
 
-    int imageCount = config.framesInFlight;
+    u32 imageCount = config.framesInFlight;
     //if (config.framesInFlight > 0 && imageCount < config.framesInFlight) {
     //    // ensure enough images for in-flight frames
     //}
@@ -2074,7 +2015,7 @@ void bnGraphicsVK::CreateRenderPass()
     depthFormat.height = height;
     depthFormat.samples = config.enableMSAA ? config.msaaSamples : 1;
     depthFormat.format = TextureFormat::D32_Float;
-    depthTexture = CreateTexture(depthFormat);
+    depthTexture = CreateTexture(depthFormat, nullptr);
     depthStencil = CreateDepthStencil(depthTexture);
 
     if (currentSwapChainImage) {
@@ -2082,118 +2023,47 @@ void bnGraphicsVK::CreateRenderPass()
             delete currentSwapChainImage; 
     }
 
-    currentSwapChainImage = (TextureVK*)GetSwapchainImage();
+    currentSwapChainImage = dynamic_cast<TextureVK*>(GetSwapchainImage());
 
-        if (config.enableMSAA) {
+    if (config.enableMSAA) {
         TextureDesc msaaFormat{};
         msaaFormat.width = width;
         msaaFormat.height = height;
         msaaFormat.samples = config.msaaSamples;
         msaaFormat.format = FromVkFormat(swapchainImageFormat);
-        msaaSWPCHTarget = CreateTexture(msaaFormat);
+        msaaSWPCHTarget = CreateTexture(msaaFormat, nullptr);
 
-        swpchTarget = (RenderTargetVK*)CreateRenderTarget({
-               .colorTargets = { msaaSWPCHTarget },
-               .depth = depthStencil,
-               .makeFramebuffer = false,
-               .colorLayout = { ImageLayout::RenderTarget, ImageLayout::Present }
-            });
+        swpchTarget = dynamic_cast<RenderTargetVK*>(CreateRenderTarget({
+            .colorTargets = {msaaSWPCHTarget},
+            .depth = depthStencil,
+            .makeFramebuffer = false,
+            .colorLayout = {ImageLayout::RenderTarget, ImageLayout::Present}
+        }));
     }
     else {
 
-        swpchTarget = (RenderTargetVK*)CreateRenderTarget({
-               .colorTargets = { currentSwapChainImage },
-               .depth = depthStencil,
-               .makeFramebuffer = false,
-               .colorLayout = { ImageLayout::Present }
-            });
+        swpchTarget = dynamic_cast<RenderTargetVK*>(CreateRenderTarget({
+            .colorTargets = {currentSwapChainImage},
+            .depth = depthStencil,
+            .makeFramebuffer = false,
+            .colorLayout = {ImageLayout::Present}
+        }));
 
     }
 
 
-        if (oldTarget) {
-            oldTarget->depth = swpchTarget->depth;
-            oldTarget->framebuffer = swpchTarget->framebuffer;
-            oldTarget->desc = swpchTarget->desc;
-            oldTarget->renderPass = swpchTarget->renderPass;
-            oldTarget->textures = swpchTarget->textures;
+    if (oldTarget) {
+        oldTarget->depth = swpchTarget->depth;
+        oldTarget->framebuffer = swpchTarget->framebuffer;
+        oldTarget->desc = swpchTarget->desc;
+        oldTarget->renderPass = swpchTarget->renderPass;
+        oldTarget->textures = swpchTarget->textures;
 
-            delete swpchTarget;
-            swpchTarget = oldTarget;
-        }
+        delete swpchTarget;
+        swpchTarget = oldTarget;
+    }
     
 
-    //std::vector<VkAttachmentDescription> attachments;
-
-    //// --- Color Attachment ---
-    //VkAttachmentDescription colorAttachment{};
-    //colorAttachment.format = swapchainImageFormat;   // swapchain format
-    //colorAttachment.samples = config.enableMSAA ? VK_SAMPLE_COUNT_8_BIT : VK_SAMPLE_COUNT_1_BIT;
-    //colorAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    //colorAttachment.storeOp = VK_ATTACHMENT_STORE_OP_STORE;
-    //colorAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    //colorAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    //colorAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    //colorAttachment.finalLayout = VK_IMAGE_LAYOUT_PRESENT_SRC_KHR;
-    //attachments.push_back(colorAttachment);
-
-    //// --- Depth Attachment (optional) ---
-    //VkAttachmentReference depthAttachmentRef{};
-    //if (config.enableDepth) {
-    //    VkAttachmentDescription depthAttachment{};
-    //    depthAttachment.format = VK_FORMAT_D32_SFLOAT;
-    //    depthAttachment.samples = config.enableMSAA ? VK_SAMPLE_COUNT_8_BIT : VK_SAMPLE_COUNT_1_BIT;
-    //    depthAttachment.loadOp = VK_ATTACHMENT_LOAD_OP_CLEAR;
-    //    depthAttachment.storeOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    //    depthAttachment.stencilLoadOp = VK_ATTACHMENT_LOAD_OP_DONT_CARE;
-    //    depthAttachment.stencilStoreOp = VK_ATTACHMENT_STORE_OP_DONT_CARE;
-    //    depthAttachment.initialLayout = VK_IMAGE_LAYOUT_UNDEFINED;
-    //    depthAttachment.finalLayout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-    //    depthAttachmentRef.attachment = static_cast<uint32_t>(attachments.size());
-    //    depthAttachmentRef.layout = VK_IMAGE_LAYOUT_DEPTH_STENCIL_ATTACHMENT_OPTIMAL;
-
-    //    attachments.push_back(depthAttachment);
-    //}
-
-    //// --- Color attachment reference ---
-    //VkAttachmentReference colorAttachmentRef{};
-    //colorAttachmentRef.attachment = 0; // first in attachments array
-    //colorAttachmentRef.layout = VK_IMAGE_LAYOUT_COLOR_ATTACHMENT_OPTIMAL;
-
-    //// --- Subpass ---
-    //VkSubpassDescription subpass{};
-    //subpass.pipelineBindPoint = VK_PIPELINE_BIND_POINT_GRAPHICS;
-    //subpass.colorAttachmentCount = 1;
-    //subpass.pColorAttachments = &colorAttachmentRef;
-    //if (config.enableDepth)
-    //    subpass.pDepthStencilAttachment = &depthAttachmentRef;
-
-    //// --- Subpass dependency ---
-    //VkSubpassDependency dependency{};
-    //dependency.srcSubpass = VK_SUBPASS_EXTERNAL;
-    //dependency.dstSubpass = 0;
-    //dependency.srcStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    //dependency.srcAccessMask = 0;
-    //dependency.dstStageMask = VK_PIPELINE_STAGE_COLOR_ATTACHMENT_OUTPUT_BIT;
-    //dependency.dstAccessMask = VK_ACCESS_COLOR_ATTACHMENT_WRITE_BIT;
-
-    //// --- Render Pass Create Info ---
-    //VkRenderPassCreateInfo renderPassInfo{};
-    //renderPassInfo.sType = VK_STRUCTURE_TYPE_RENDER_PASS_CREATE_INFO;
-    //renderPassInfo.attachmentCount = static_cast<uint32_t>(attachments.size());
-    //renderPassInfo.pAttachments = attachments.data();
-    //renderPassInfo.subpassCount = 1;
-    //renderPassInfo.pSubpasses = &subpass;
-    //renderPassInfo.dependencyCount = 1;
-    //renderPassInfo.pDependencies = &dependency;
-
-    //if (vkCreateRenderPass(device, &renderPassInfo, nullptr, &renderPass) != VK_SUCCESS) {
-    //    //throw std::runtime_error("Failed to create Vulkan render pass!");
-    //    return;
-    //}
-
-    return;
 }
 
 void bnGraphicsVK::CreateFrameBuffers()
@@ -2208,14 +2078,14 @@ void bnGraphicsVK::CreateFrameBuffers()
     
 
             if (config.enableMSAA) {
-                attachments.push_back(((TextureVK*)msaaSWPCHTarget)->imageView);
+                attachments.push_back(dynamic_cast<TextureVK*>(msaaSWPCHTarget)->imageView);
             }
           
             attachments.push_back(swapchainImageViews[i]);
 
             //// Depth attachment if enabled
             if (depthStencil != VK_NULL_HANDLE) {
-                attachments.push_back(((DepthStencilVK*)depthStencil)->depthView);
+                attachments.push_back(dynamic_cast<DepthStencilVK*>(depthStencil)->depthView);
             }
 
             VkFramebufferCreateInfo framebufferInfo{};
@@ -2236,7 +2106,7 @@ void bnGraphicsVK::CreateFrameBuffers()
 
 }
 
-u32 bnGraphicsVK::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties)
+u32 bnGraphicsVK::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags properties) const
 {
     VkPhysicalDeviceMemoryProperties memProperties;
     vkGetPhysicalDeviceMemoryProperties(physicalDevice, &memProperties);
@@ -2247,10 +2117,210 @@ u32 bnGraphicsVK::FindMemoryType(uint32_t typeFilter, VkMemoryPropertyFlags prop
             return i;
         }
     }
+
+    return 0;
+}
+
+InputLayoutVK::InputLayoutVK(const InputLayoutDesc &desc) {
+    this->desc = desc;
+    bindings.clear();
+    attributes.clear();
+
+    // Single vertex buffer binding (for simplicity)
+    VkVertexInputBindingDescription binding{};
+    binding.binding = 0;
+    binding.stride = desc.stride; // stride of one vertex
+    binding.inputRate = VK_VERTEX_INPUT_RATE_VERTEX;
+    bindings.push_back(binding);
+
+    for (const auto & elem : desc.elements)
+    {
+        // your vertex elements
+        VkVertexInputAttributeDescription attr{};
+        attr.location = elem.semanticIndex;
+        attr.binding = elem.inputSlot;
+        attr.format = TranslateTypeToVkFormat(elem.type);
+        attr.offset = elem.offset;
+        attributes.push_back(attr);
+    }
+
+    vkVertexInputInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_VERTEX_INPUT_STATE_CREATE_INFO;
+    vkVertexInputInfo.vertexBindingDescriptionCount = static_cast<uint32_t>(bindings.size());
+    vkVertexInputInfo.pVertexBindingDescriptions = bindings.data();
+    vkVertexInputInfo.vertexAttributeDescriptionCount = static_cast<uint32_t>(attributes.size());
+    vkVertexInputInfo.pVertexAttributeDescriptions = attributes.data();
+}
+
+ShaderVK::ShaderVK(VkDevice device, const ShaderDesc &desc): device(device) {
+    type = desc.type;
+    ogData = desc.ogData;
+    binary.reserve(desc.bytecodeSize);
+    binary.insert(binary.end(),
+                  desc.bytecode,
+                  desc.bytecode + desc.bytecodeSize);
+
+    VkShaderModuleCreateInfo createInfo{};
+    createInfo.sType = VK_STRUCTURE_TYPE_SHADER_MODULE_CREATE_INFO;
+    createInfo.codeSize = desc.bytecodeSize;
+    createInfo.pCode = reinterpret_cast<const uint32_t*>(desc.bytecode);
+
+    if (vkCreateShaderModule(device, &createInfo, nullptr, &shaderModule) != VK_SUCCESS)
+        throw std::runtime_error("Failed to create shader module");
+}
+
+VkPipelineShaderStageCreateInfo ShaderVK::GetStageInfo() const {
+    VkPipelineShaderStageCreateInfo stageInfo{};
+    stageInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_SHADER_STAGE_CREATE_INFO;
+    stageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT; // default
+    stageInfo.module = shaderModule;
+    stageInfo.pName = "main"; // entry point
+
+    // Set stage according to shader type
+    switch (type)
+    {
+        case ShaderDesc::Type::Vertex:
+            stageInfo.stage = VK_SHADER_STAGE_VERTEX_BIT;
+            break;
+        case ShaderDesc::Type::Pixel:  // fragment shader
+            stageInfo.stage = VK_SHADER_STAGE_FRAGMENT_BIT;
+            break;
+        case ShaderDesc::Type::Compute:
+            stageInfo.stage = VK_SHADER_STAGE_COMPUTE_BIT;
+            break;
+        case ShaderDesc::Type::Geometry:
+            stageInfo.stage = VK_SHADER_STAGE_GEOMETRY_BIT;
+            break;
+        case ShaderDesc::Type::TessControl:
+            stageInfo.stage = VK_SHADER_STAGE_TESSELLATION_CONTROL_BIT;
+            break;
+        case ShaderDesc::Type::TessEval:
+            stageInfo.stage = VK_SHADER_STAGE_TESSELLATION_EVALUATION_BIT;
+            break;
+        case ShaderDesc::Type::RayGen:
+            stageInfo.stage = VK_SHADER_STAGE_RAYGEN_BIT_KHR;
+            break;
+        case ShaderDesc::Type::ClosestHit:
+            stageInfo.stage = VK_SHADER_STAGE_CLOSEST_HIT_BIT_KHR;
+            break;
+        case ShaderDesc::Type::AnyHit:
+            stageInfo.stage = VK_SHADER_STAGE_ANY_HIT_BIT_KHR;
+            break;
+        case ShaderDesc::Type::Miss:
+            stageInfo.stage = VK_SHADER_STAGE_MISS_BIT_KHR;
+            break;
+        case ShaderDesc::Type::Intersection:
+            stageInfo.stage = VK_SHADER_STAGE_INTERSECTION_BIT_KHR;
+            break;
+        case ShaderDesc::Type::Callable:
+         stageInfo.stage = VK_SHADER_STAGE_CALLABLE_BIT_KHR;
+            break;
+    }
+
+    return stageInfo;
+}
+
+ViewportVK::ViewportVK(const ViewPortDesc &desc) {
+    auto vp = desc.viewport;
+
+    viewport.x = vp->x;
+    viewport.y = vp->y;
+    viewport.width = vp->width;
+    viewport.height = vp->height;
+    viewport.minDepth = vp->minDepth;
+    viewport.maxDepth = vp->maxDepth;
+
+    scissor.offset = { static_cast<i32>(vp->x), static_cast<i32>(vp->y) };
+    scissor.extent = { static_cast<u8>(vp->width), static_cast<u8>(vp->height) };
+}
+
+RasterizerVK::RasterizerVK(const RasterizerDesc &desc) {
+    vkRaster.lineWidth = 1.0f;
+    vkRaster.sType = VK_STRUCTURE_TYPE_PIPELINE_RASTERIZATION_STATE_CREATE_INFO;
+    vkRaster.polygonMode = (desc.fillMode == IFillMode::Solid) ? VK_POLYGON_MODE_FILL : VK_POLYGON_MODE_LINE;
+    vkRaster.cullMode = (desc.cullMode == CullMode::Back) ? VK_CULL_MODE_BACK_BIT :
+                            (desc.cullMode == CullMode::Front) ? VK_CULL_MODE_FRONT_BIT : VK_CULL_MODE_NONE;
+    vkRaster.frontFace = desc.frontCounterClockwise ? VK_FRONT_FACE_COUNTER_CLOCKWISE : VK_FRONT_FACE_CLOCKWISE;
+    vkRaster.depthBiasEnable = VK_FALSE;
+}
+
+DepthStencilStateVK::DepthStencilStateVK(const DepthStencilDesc &desc) {
+    vkDepthStencil.sType = VK_STRUCTURE_TYPE_PIPELINE_DEPTH_STENCIL_STATE_CREATE_INFO;
+    vkDepthStencil.depthTestEnable = desc.depthEnable ? VK_TRUE : VK_FALSE;
+    vkDepthStencil.depthWriteEnable = desc.depthWriteMask ? VK_TRUE : VK_FALSE;
+    vkDepthStencil.depthCompareOp = TranslateComparisonFunc(desc.depthFunc);
+    vkDepthStencil.stencilTestEnable = desc.stencilEnable ? VK_TRUE : VK_FALSE;
+    // Fill front/back stencil ops
+}
+
+BlendStateVK::BlendStateVK(const BlendStateDesc &desc) {
+    attachments.resize(1); // max render targets
+    for (int i = 0; i < 1; ++i) {
+        auto& a = attachments[i];
+        a.blendEnable = desc.renderTarget[i].blendEnable ? VK_TRUE : VK_FALSE;
+        a.srcColorBlendFactor = TranslateBlend(desc.renderTarget[i].srcBlend);
+        a.dstColorBlendFactor = TranslateBlend(desc.renderTarget[i].destBlend);
+        a.colorBlendOp = TranslateBlendOp(desc.renderTarget[i].blendOp);
+        a.srcAlphaBlendFactor = TranslateBlend(desc.renderTarget[i].srcBlendAlpha);
+        a.dstAlphaBlendFactor = TranslateBlend(desc.renderTarget[i].destBlendAlpha);
+        a.alphaBlendOp = TranslateBlendOp(desc.renderTarget[i].blendOpAlpha);
+        a.colorWriteMask = desc.renderTarget[i].renderTargetWriteMask;
+    }
+    vkBlend.sType = VK_STRUCTURE_TYPE_PIPELINE_COLOR_BLEND_STATE_CREATE_INFO;
+    vkBlend.attachmentCount = static_cast<uint32_t>(attachments.size());
+    vkBlend.pAttachments = attachments.data();
+}
+
+SamplerVK::SamplerVK(VkDevice dev, const SamplerStateDesc &desc, sVec<SamplerVK *> *samplerReleasePointer): device(dev), samplerReleasePointer(samplerReleasePointer) {
+    VkSamplerCreateInfo samplerInfo{};
+    samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
+
+    // Convert filters
+    samplerInfo.minFilter = ToVkFilter(desc.minFilter);
+    samplerInfo.magFilter = ToVkFilter(desc.magFilter);
+    samplerInfo.mipmapMode = ToVkMipmapMode(desc.mipFilter);
+
+    // Convert address modes
+    samplerInfo.addressModeU = ToVkAddressMode(desc.addressU);
+    samplerInfo.addressModeV = ToVkAddressMode(desc.addressV);
+    samplerInfo.addressModeW = ToVkAddressMode(desc.addressW);
+
+    // LOD
+    samplerInfo.mipLodBias = desc.mipLODBias;
+    samplerInfo.minLod = desc.minLOD;
+    samplerInfo.maxLod = desc.maxLOD;
+
+    // Anisotropy
+    samplerInfo.anisotropyEnable = (desc.maxAnisotropy > 1) ? VK_TRUE : VK_FALSE;
+    samplerInfo.maxAnisotropy = static_cast<float>(desc.maxAnisotropy);
+
+    // Comparison function
+    if (desc.comparisonFunc != ComparisonFunc::Always) {
+        samplerInfo.compareEnable = VK_TRUE;
+        samplerInfo.compareOp = ToVkCompareOp(desc.comparisonFunc);
+    }
+    else {
+        samplerInfo.compareEnable = VK_FALSE;
+        samplerInfo.compareOp = VK_COMPARE_OP_ALWAYS;
+    }
+
+    // Border color
+    samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_TRANSPARENT_BLACK; // default
+    if (desc.addressU == TextureAddressMode::Border ||
+        desc.addressV == TextureAddressMode::Border ||
+        desc.addressW == TextureAddressMode::Border) {
+        samplerInfo.borderColor = VK_BORDER_COLOR_FLOAT_CUSTOM_EXT;
+        // Or map your borderColor to closest VK_BORDER_COLOR enum
+    }
+
+    samplerInfo.unnormalizedCoordinates = VK_FALSE;
+
+    if (vkCreateSampler(device, &samplerInfo, nullptr, &sampler) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create Vulkan sampler!");
+    }
 }
 
 void CommandListVK::BindPipeline(IPipeline* pipeline) {
-    PipelineVK* vkPipeline = static_cast<PipelineVK*>(pipeline);
+    auto* vkPipeline = dynamic_cast<PipelineVK*>(pipeline);
 
     if (!vkPipeline || !vkPipeline->pipeline) return;
 
@@ -2261,7 +2331,7 @@ void CommandListVK::BindPipeline(IPipeline* pipeline) {
 }
 
 void CommandListVK::BindDescriptorSet(IDescriptorSet* set, uint32_t index) {
-    DescriptorSetVK* vkSet = static_cast<DescriptorSetVK*>(set);
+    auto* vkSet = dynamic_cast<DescriptorSetVK*>(set);
 
     if (!vkSet || !vkSet->pipeline) return;
 
@@ -2270,7 +2340,7 @@ void CommandListVK::BindDescriptorSet(IDescriptorSet* set, uint32_t index) {
 }
 
 void CommandListVK::BindViewPort(IViewPort* viewport2) {
-    auto* viewport = static_cast<ViewportVK*>(viewport2);
+    auto* viewport = dynamic_cast<ViewportVK*>(viewport2);
     if (!viewport) return;
 
     //vkCmdSetViewport(cmdBuffer, 0, 1, &viewport->viewport);
@@ -2278,7 +2348,7 @@ void CommandListVK::BindViewPort(IViewPort* viewport2) {
 }
 
 void CommandListVK::BindScissor(IViewPort* viewport2) {
-    auto* viewport = static_cast<ViewportVK*>(viewport2);
+    auto* viewport = dynamic_cast<ViewportVK*>(viewport2);
     if (!viewport) return;
 
     //vkCmdSetScissor(cmdBuffer, 0, 1, &viewport->scissor);
@@ -2287,7 +2357,7 @@ void CommandListVK::BindScissor(IViewPort* viewport2) {
 
 void CommandListVK::BindBuffer(IBuffer* buffer)
 {
-    BufferVK* vkBuffer = static_cast<BufferVK*>(buffer);
+    auto* vkBuffer = dynamic_cast<BufferVK*>(buffer);
     if (!vkBuffer) return;
 
     if (vkBuffer->type == BufferType::Vertex) {
@@ -2299,15 +2369,6 @@ void CommandListVK::BindBuffer(IBuffer* buffer)
 }
 
 void CommandListVK::Draw(PrimitiveType type, size_t vertexCount, size_t vertexOffset) {
-    VkPrimitiveTopology topology = ToVkPrimitiveTopology(type);
-
-    // Topology is usually dynamic if pipeline allows
-    //vkCmdSetPrimitiveTopology(cmdBuffer, topology);
-
-
-    //vkCmdDraw(cmdBuffer, static_cast<uint32_t>(vertexCount),
-    //    1, static_cast<uint32_t>(vertexOffset), 0);
-
     draw.type = type;
     draw.vertexCount = vertexCount;
     draw.vertexOffset = vertexOffset;
@@ -2316,18 +2377,6 @@ void CommandListVK::Draw(PrimitiveType type, size_t vertexCount, size_t vertexOf
 }
 
 void CommandListVK::DrawIndexed(PrimitiveType type, IBuffer* indexBuffer, size_t indexCount, size_t indexOffset) {
-    BufferVK* vkBuffer = static_cast<BufferVK*>(indexBuffer);
-
-    //vkCmdBindIndexBuffer(cmdBuffer, vkBuffer->buffer, 0,
-    //    VK_INDEX_TYPE_UINT32);
-
-    //VkPrimitiveTopology topology = ToVkPrimitiveTopology(type);
-    //
-    //vkCmdSetPrimitiveTopology(cmdBuffer, topology);
-
-    //vkCmdDrawIndexed(cmdBuffer, static_cast<uint32_t>(indexCount), 1,
-    //    static_cast<uint32_t>(indexOffset), 0, 0);
-
     draw.type = type;
     draw.indexBuffer = indexBuffer;
     draw.indexCount = indexCount;
@@ -2337,26 +2386,149 @@ void CommandListVK::DrawIndexed(PrimitiveType type, IBuffer* indexBuffer, size_t
 }
 
 void CommandListVK::CopyToBuffer(IBuffer* buffer, void* data, size_t size) {
-    BufferVK* vkBuffer = static_cast<BufferVK*>(buffer);
-
+    auto* vkBuffer = dynamic_cast<BufferVK*>(buffer);
     void* mapped = nullptr;
     vkMapMemory(device, vkBuffer->memory, 0, size, 0, &mapped);
     memcpy(mapped, data, size);
     vkUnmapMemory(device, vkBuffer->memory);
 }
 
-DescriptorSetVK::~DescriptorSetVK()
-{
-    
+VkImageMemoryBarrier CommandBufferVK::BarrierCreator(ITexture *image, ImageLayout oldLayout, ImageLayout newLayout,
+    ImageAccessLayout srcAccessMask, ImageAccessLayout dstAccessMask) {
+    auto vkTexture = dynamic_cast<TextureVK*>(image);
+    if (!vkTexture) return {};
+
+
+    if (oldLayout != image->explicitLayout) {
+        oldLayout = image->explicitLayout;
+    }
+
+    VkImageMemoryBarrier barrier{};
+    barrier.sType = VK_STRUCTURE_TYPE_IMAGE_MEMORY_BARRIER;
+    barrier.oldLayout = ToVkImageLayout(oldLayout);
+    barrier.newLayout = ToVkImageLayout(newLayout);
+    barrier.srcAccessMask = ToVkAccessFlags(srcAccessMask);
+    barrier.dstAccessMask = ToVkAccessFlags(dstAccessMask);
+    barrier.srcQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.dstQueueFamilyIndex = VK_QUEUE_FAMILY_IGNORED;
+    barrier.image = vkTexture->image;
+    barrier.subresourceRange.aspectMask = VK_IMAGE_ASPECT_COLOR_BIT;
+    barrier.subresourceRange.baseMipLevel = 0;
+    barrier.subresourceRange.levelCount = 1;
+    barrier.subresourceRange.baseArrayLayer = 0;
+    barrier.subresourceRange.layerCount = 1;
+
+    return barrier;
 }
+
+void CommandBufferVK::PipelineBarrierBatched(ITexture *image, ImageLayout oldLayout, ImageLayout newLayout,
+    ImageAccessLayout srcAccessMask, ImageAccessLayout dstAccessMask) {
+    auto vkTexture = dynamic_cast<TextureVK*>(image);
+    if (!vkTexture) return;
+
+    auto barrier = BarrierCreator(image, oldLayout, newLayout, srcAccessMask, dstAccessMask);
+    pendingBarriers.push_back(barrier);
+
+    image->explicitLayout = newLayout;
+}
+
+void CommandBufferVK::FlushBatchedBarriers() {
+
+    if (!pendingBarriers.empty()) {
+        VkPipelineStageFlags srcStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+        VkPipelineStageFlags dstStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+
+        vkCmdPipelineBarrier(
+            buffer,
+            srcStage,    // src stage
+            dstStage, // dst stage
+            0,                                    // dependency flags
+            0, nullptr,                            // memory barriers
+            0, nullptr,                            // buffer barriers
+            static_cast<uint32_t>(pendingBarriers.size()), pendingBarriers.data() // image barriers
+        );
+
+        pendingBarriers.clear();
+    }
+}
+
+void CommandBufferVK::PipelineBarrier(ITexture *image, ImageLayout oldLayout, ImageLayout newLayout,
+    ImageAccessLayout srcAccessMask, ImageAccessLayout dstAccessMask) {
+
+    auto vkTexture = dynamic_cast<TextureVK*>(image);
+    if (!vkTexture) return;
+
+
+    if (oldLayout != image->explicitLayout) {
+        oldLayout = image->explicitLayout;
+    }
+
+    VkImageMemoryBarrier barrier = BarrierCreator(image, oldLayout, newLayout, srcAccessMask, dstAccessMask);
+
+    //Todo: Determine source/destination stage masks
+    VkPipelineStageFlags srcStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+    VkPipelineStageFlags dstStage = VK_PIPELINE_STAGE_ALL_COMMANDS_BIT;
+
+    vkCmdPipelineBarrier(
+        this->buffer, // VkCommandBuffer
+        srcStage,
+        dstStage,
+        0,
+        0, nullptr,
+        0, nullptr,
+        1, &barrier
+    );
+
+    image->explicitLayout = newLayout;
+}
+
+DescriptorSetLayoutVK::DescriptorSetLayoutVK(VkDevice device, const DescriptorSetLayoutDesc& desc): device(device), desc(desc) {
+    std::vector<VkDescriptorSetLayoutBinding> vkBindings;
+    vkBindings.reserve(desc.bindings.size());
+
+    for (auto& b : desc.bindings) {
+        vkBindings.push_back({ b.binding, ToVkDescriptorType(b.type), b.count, ToVkShaderStageFlags(b.stageFlags), nullptr });
+    }
+
+    VkDescriptorSetLayoutCreateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_LAYOUT_CREATE_INFO;
+    info.flags = ToVkFlags(desc.flags);
+    info.bindingCount = static_cast<uint32_t>(vkBindings.size());
+    info.pBindings = vkBindings.data();
+
+    if (vkCreateDescriptorSetLayout(device, &info, nullptr, &layout) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create descriptor set layout!");
+    }
+}
+
+DescriptorPoolVK::DescriptorPoolVK(VkDevice device, const DescriptorPoolDesc& desc): device(device) {
+    std::vector<VkDescriptorPoolSize> vkSizes;
+    vkSizes.reserve(desc.poolSizes.size());
+
+    for (auto& s : desc.poolSizes) {
+        vkSizes.push_back({ ToVkDescriptorType(s.first), s.second });
+    }
+
+    VkDescriptorPoolCreateInfo info{};
+    info.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_POOL_CREATE_INFO;
+    info.flags = ToVkDescriptorPoolFlags(desc.flags);
+    info.maxSets = desc.maxSets;
+    info.poolSizeCount = static_cast<uint32_t>(vkSizes.size());
+    info.pPoolSizes = vkSizes.data();
+
+    if (vkCreateDescriptorPool(device, &info, nullptr, &pool) != VK_SUCCESS) {
+        throw std::runtime_error("Failed to create descriptor pool!");
+    }
+}
+
+DescriptorSetVK::~DescriptorSetVK() = default;
 
 void DescriptorSetVK::SetBuffer(uint32_t slot, IBuffer* buffer) {
     if (!buffer) return;
 
     // Ensure the vector is large enough
     if (slot >= buffers.size()) buffers.resize(slot + 1, nullptr);
-
-    buffers[slot] = static_cast<BufferVK*>(buffer);
+    buffers[slot] = dynamic_cast<BufferVK*>(buffer);
 }
 
 void DescriptorSetVK::SetTexture(uint32_t slot, ITexture* texture) {
@@ -2364,7 +2536,7 @@ void DescriptorSetVK::SetTexture(uint32_t slot, ITexture* texture) {
 
     if (slot >= textures.size()) textures.resize(slot + 1, nullptr);
 
-    textures[slot] = static_cast<TextureVK*>(texture);
+    textures[slot] = dynamic_cast<TextureVK*>(texture);
 }
 
 void DescriptorSetVK::SetSampler(uint32_t slot, ISamplerState* sampler) {
@@ -2372,7 +2544,7 @@ void DescriptorSetVK::SetSampler(uint32_t slot, ISamplerState* sampler) {
 
     if (slot >= samplers.size()) samplers.resize(slot + 1, nullptr);
 
-    samplers[slot] = static_cast<SamplerVK*>(sampler);
+    samplers[slot] = dynamic_cast<SamplerVK*>(sampler);
 }
 
 void DescriptorSetVK::Update() {
@@ -2400,9 +2572,7 @@ void DescriptorSetVK::Update() {
         writes.push_back(write);
     }
 
-    uint32_t textureBindingOffset = static_cast<uint32_t>(buffers.size());
-
-    // Update textures (combined image sampler)
+    // uint32_t textureBindingOffset = static_cast<uint32_t>(buffers.size());
     for (uint32_t i = 0; i < textures.size(); ++i) {
         TextureVK* tex = textures[i];
         if (!tex) continue;
@@ -2432,4 +2602,225 @@ void DescriptorSetVK::Update() {
             writes.data(),
             0, nullptr);
     }
+}
+
+PipelineVK::PipelineVK(sVec<PipelineVK *> *releaseVec, VkDevice dev, DescriptorSetLayoutVK *setLayout,
+    DescriptorPoolVK *pool, const std::vector<ShaderVK *>& shaders, InputLayoutVK *inputLayout, RasterizerVK *rasterizer,
+    DepthStencilStateVK *depthStencil, BlendStateVK *blendState, RenderTargetVK *renderTarget,
+    IGraphicsDeviceConfig &config) : config(config), device(dev), descriptorSetLayout(setLayout), releaseVec(releaseVec), descriptorPool(pool), renderTarget(renderTarget) {
+    // 1. Create pipeline layout
+    VkPipelineLayoutCreateInfo layoutInfo{};
+    layoutInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_LAYOUT_CREATE_INFO;
+    layoutInfo.setLayoutCount = 1;
+    layoutInfo.pSetLayouts = &descriptorSetLayout->layout;
+    layoutInfo.pushConstantRangeCount = 0;
+    layoutInfo.pPushConstantRanges = nullptr;
+
+    if (vkCreatePipelineLayout(device, &layoutInfo, nullptr, &layout) != VK_SUCCESS)
+        throw std::runtime_error("Failed to create pipeline layout!");
+
+    VkGraphicsPipelineCreateInfo pipelineInfo{};
+    pipelineInfo.sType = VK_STRUCTURE_TYPE_GRAPHICS_PIPELINE_CREATE_INFO;
+
+    std::vector<VkPipelineShaderStageCreateInfo> vkStages;
+    vkStages.reserve(shaders.size());
+    for (auto shader : shaders) vkStages.push_back(shader->GetStageInfo());
+
+    pipelineInfo.stageCount = static_cast<uint32_t>(vkStages.size());
+    pipelineInfo.pStages = vkStages.data();
+    pipelineInfo.pVertexInputState = &inputLayout->vkVertexInputInfo;
+    pipelineInfo.pRasterizationState = &rasterizer->vkRaster;
+    pipelineInfo.pDepthStencilState = &depthStencil->vkDepthStencil;
+    pipelineInfo.pColorBlendState = &blendState->vkBlend;
+
+    VkPipelineInputAssemblyStateCreateInfo inputAssembly{};
+    inputAssembly.sType = VK_STRUCTURE_TYPE_PIPELINE_INPUT_ASSEMBLY_STATE_CREATE_INFO;
+    inputAssembly.topology = VK_PRIMITIVE_TOPOLOGY_TRIANGLE_LIST;
+    inputAssembly.primitiveRestartEnable = VK_FALSE;
+    pipelineInfo.pInputAssemblyState = &inputAssembly;
+
+    std::vector<VkDynamicState> dynamicStates = {
+        VK_DYNAMIC_STATE_PRIMITIVE_TOPOLOGY,
+        VK_DYNAMIC_STATE_VIEWPORT,
+        VK_DYNAMIC_STATE_SCISSOR
+    };
+
+    VkPipelineDynamicStateCreateInfo dynamicInfo{};
+    dynamicInfo.sType = VK_STRUCTURE_TYPE_PIPELINE_DYNAMIC_STATE_CREATE_INFO;
+    dynamicInfo.dynamicStateCount = static_cast<uint32_t>(dynamicStates.size());
+    dynamicInfo.pDynamicStates = dynamicStates.data();
+    pipelineInfo.pDynamicState = &dynamicInfo;
+
+    pipelineInfo.layout = layout;
+    pipelineInfo.renderPass = renderTarget->renderPass;
+    pipelineInfo.subpass = 0;
+    pipelineInfo.basePipelineHandle = pipeline;
+    pipelineInfo.basePipelineIndex = 0;
+
+    // Viewport + scissor must always be defined, even if dynamic
+    VkPipelineViewportStateCreateInfo viewportState{};
+    viewportState.sType = VK_STRUCTURE_TYPE_PIPELINE_VIEWPORT_STATE_CREATE_INFO;
+    viewportState.viewportCount = 1; // Must be >0
+    viewportState.pViewports = nullptr; // ignored if dynamic
+    viewportState.scissorCount = 1;
+    viewportState.pScissors = nullptr;  // ignored if dynamic
+    pipelineInfo.pViewportState = &viewportState;
+
+    // Multisampling (even if you don�t use MSAA)
+    VkPipelineMultisampleStateCreateInfo multisample{};
+    multisample.sType = VK_STRUCTURE_TYPE_PIPELINE_MULTISAMPLE_STATE_CREATE_INFO;
+    multisample.rasterizationSamples = IntToVkSampleCount(config.enableMSAA ? config.msaaSamples : 1);
+    multisample.sampleShadingEnable = VK_FALSE;
+    pipelineInfo.pMultisampleState = &multisample;
+
+    auto res = vkCreateGraphicsPipelines(device, VK_NULL_HANDLE, 1, &pipelineInfo, nullptr, &pipeline);
+    if (res != VK_SUCCESS)
+        throw std::runtime_error("Failed to create graphics pipeline!");
+}
+
+IDescriptorSet * PipelineVK::CreateDescriptorSet(u32 slot) {
+    VkDescriptorSetAllocateInfo allocInfo{};
+    allocInfo.sType = VK_STRUCTURE_TYPE_DESCRIPTOR_SET_ALLOCATE_INFO;
+    allocInfo.descriptorPool = descriptorPool->pool;
+    allocInfo.descriptorSetCount = 1;
+    allocInfo.pSetLayouts = &descriptorSetLayout->layout;
+
+    VkDescriptorSet vkSetHandle;
+    auto result = vkAllocateDescriptorSets(device, &allocInfo, &vkSetHandle);
+    if (result != VK_SUCCESS)
+        throw std::runtime_error("Failed to allocate descriptor set!");
+
+    auto* ds = new DescriptorSetVK(device, vkSetHandle, this);
+    descriptorSets[slot] = ds;
+    return ds;
+}
+
+IDescriptorSet* PipelineVK::GetDescriptorSet(u32 slot)
+{
+    auto it = descriptorSets.find(slot);
+    if (it != descriptorSets.end()) {
+        return it->second;
+    }
+    else return nullptr;
+}
+
+PipelineBuilderVK & PipelineBuilderVK::From(const IPipelineBuilder &builder) {
+    if (const auto* src = dynamic_cast<const PipelineBuilderVK*>(&builder)) {
+        this->shaders          = src->shaders;
+        this->inputLayout      = src->inputLayout;
+        this->renderPass     = src->renderPass;
+        this->rasterizer       = src->rasterizer;
+        this->depthStencil     = src->depthStencil;
+        this->blendState       = src->blendState;
+        this->descriptorPool   = src->descriptorPool;
+        this->descriptorSetLayout = src->descriptorSetLayout;
+    }
+
+    return *this;
+}
+
+PipelineBuilderVK & PipelineBuilderVK::AddShader(IShader *shader) {
+    auto vShader = dynamic_cast<ShaderVK*>(shader);
+
+    if (!vShader) return *this;
+
+    shaders.push_back(vShader);
+    return *this;
+}
+
+PipelineBuilderVK & PipelineBuilderVK::SetInputLayout(IInputLayout *layout) {
+    auto vLayout = dynamic_cast<InputLayoutVK*>(layout);
+
+    if (!vLayout) return *this;
+
+    inputLayout = vLayout;
+    return *this;
+}
+
+PipelineBuilderVK & PipelineBuilderVK::SetRasterizer(IRasterizerState *raster) {
+    auto vRaster = dynamic_cast<RasterizerVK*>(raster);
+
+    if (!vRaster) return *this;
+
+    rasterizer = vRaster;
+    return *this;
+}
+
+PipelineBuilderVK & PipelineBuilderVK::SetDepthStencil(IDepthStencilState *depth) {
+    auto vDepth = dynamic_cast<DepthStencilStateVK*>(depth);
+
+    if (!vDepth) return *this;
+
+    depthStencil = vDepth;
+    return *this;
+}
+
+PipelineBuilderVK & PipelineBuilderVK::SetBlendState(IBlendState *blend) {
+    auto vBlend = dynamic_cast<BlendStateVK*>(blend);
+
+    if (!vBlend) return *this;
+
+    blendState = vBlend;
+    return *this;
+}
+
+PipelineBuilderVK & PipelineBuilderVK::SetDescriptorPool(IDescriptorPool *pool) {
+    auto vPool = dynamic_cast<DescriptorPoolVK*>(pool);
+
+    if (!vPool) return *this;
+
+    descriptorPool = vPool;
+    return *this;
+}
+
+IPipelineBuilder & PipelineBuilderVK::SetRenderTarget(IRenderTarget *target) {
+    auto vRenderTarget = dynamic_cast<RenderTargetVK*>(target);
+
+    if (!vRenderTarget) return *this;
+
+    renderPass = vRenderTarget;
+    return *this;
+}
+
+PipelineBuilderVK & PipelineBuilderVK::SetDescriptorSetLayout(IDescriptorSetLayout *layout) {
+    auto vLayout = dynamic_cast<DescriptorSetLayoutVK*>(layout);
+
+    if (!vLayout) return *this;
+
+    descriptorSetLayout = vLayout;
+    return *this;
+}
+
+sVec<IShader *> * PipelineBuilderVK::GetShaders() {
+
+    if (shaders.size() != interfaceShaders.size()) {
+        interfaceShaders.clear();
+        for (auto* s : shaders) {
+            interfaceShaders.push_back(static_cast<IShader*>(s));
+        }
+    }
+
+    return &interfaceShaders;
+}
+
+IPipeline * PipelineBuilderVK::Build() {
+    if (!inputLayout || !rasterizer || !depthStencil || !blendState || !renderPass) {
+        return nullptr;
+    }
+
+    auto* pipeline = new PipelineVK(
+        releaseVec,
+        device,
+        descriptorSetLayout,
+        descriptorPool,
+        shaders,
+        inputLayout,
+        rasterizer,
+        depthStencil,
+        blendState,
+        renderPass,
+        config
+    );
+
+    return pipeline;
 }

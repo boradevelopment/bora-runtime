@@ -205,9 +205,11 @@ struct PipelineCreateDescriptorSetCommand : public IGPUCommand
 };
 
 
-    class PipelineBuilderImmediate : public IPipelineBuilder {
+class PipelineBuilderImmediate : public IPipelineBuilder {
     public:
         PipelineBuilderImmediate(CommandVector* vector) : vector(vector) {}
+
+        PipelineBuilderImmediate& From(const IPipelineBuilder& builder) override;
 
         PipelineBuilderImmediate& AddShader(IShader* shader) override;
 
@@ -228,7 +230,7 @@ struct PipelineCreateDescriptorSetCommand : public IGPUCommand
 
             //if (!vRenderTarget) return *this;
 
-            //renderPass = vRenderTarget;
+            renderPass = target;
             return *this;
         };
 
@@ -253,6 +255,32 @@ public:
     IRenderTarget* renderPass = nullptr;
 };
 
+struct PipelineDeleteCommand : public IGPUCommand
+{
+    ResourceHandle<IPipelineBuilder>* objectHandle = nullptr;
+
+    explicit PipelineDeleteCommand(ResourceHandle<IPipelineBuilder>* object) : objectHandle(object) {}
+
+    void Execute(IGraphicsDevice* graphicsDevice) override
+    {
+        auto object = objectHandle->Get();
+        if (!object) return;
+
+        objectHandle->Invalidate();
+    }
+};
+
+struct PipelineFromCommand : public IGPUCommand {
+    ResourceHandle<IPipelineBuilder>* destObjectHandle = nullptr;
+    ResourceHandle<IPipelineBuilder>* srcObjectHandle = nullptr;
+
+    explicit PipelineFromCommand(ResourceHandle<IPipelineBuilder>* object, ResourceHandle<IPipelineBuilder>* srcObjectHandle) : destObjectHandle(object), srcObjectHandle(srcObjectHandle) {}
+
+    void Execute(IGraphicsDevice* graphicsDevice) override {
+        if (!destObjectHandle->Get() || !srcObjectHandle->Get()) return;
+        destObjectHandle->Get()->From(*srcObjectHandle->Get());
+    }
+};
 
 
     struct PipelineBuildCommand : public IGPUCommand
@@ -1164,6 +1192,7 @@ public:
         void ReleasePipeline(ResourceHandle<IPipeline>* pipeline);
         void ReleaseCommandList(GraphicAdvancedCommandList* list);
         void ReleaseDescriptorSet(ResourceHandle<IDescriptorSet>* set);
+        void ReleaseBuilder(ResourceHandle<IPipelineBuilder>* builder);
 
         void CopyToBuffer(ResourceHandle<IBuffer>* buffer, ResourceHandle<ICommandBuffer>* pool, void* data, size_t size);
         void MapBufferMemory(ResourceHandle<IBuffer>* buffer, ResourceHandle<void>* dataPtr);
@@ -1172,7 +1201,7 @@ public:
         void CopyBufferToImage(ResourceHandle<ICommandBuffer>* cBuffer, ResourceHandle<IBuffer>* srcBuffer, ResourceHandle<ITexture>* dstTexture, BufferImageCopyDesc desc);
         void CopyImageToImage(ResourceHandle<ICommandBuffer>* cBuffer, ResourceHandle<ITexture>* srcBuffer, ResourceHandle<ITexture>* dstBuffer, ImageCopyDesc desc);
 
-
+        void BuilderFrom(ResourceHandle<IPipelineBuilder>* destObject, ResourceHandle<IPipelineBuilder>* srcObject);
         void BuilderAddShader(ResourceHandle<IPipelineBuilder>* builder, ResourceHandle<IShader>* shader);
         void BuilderSetInputLayout(ResourceHandle<IPipelineBuilder>* builder, ResourceHandle<IInputLayout>* layout);
         void BuilderSetRasterizer(ResourceHandle<IPipelineBuilder>* builder, ResourceHandle<IRasterizerState>* raster);

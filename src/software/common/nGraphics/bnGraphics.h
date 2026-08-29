@@ -91,7 +91,7 @@ public:
         return vectorGraphicsAdv.back().get();
     }
   
-    void DispatchCompute(UINT x, UINT y, UINT z) {
+    void DispatchCompute(uint x, uint y, uint z) {
 
     }
 

@@ -1,6 +1,9 @@
+set(WAMR_BUILD_FAST_JIT 1)
+set(WAMR_BUILD_LAZY_JIT 1)
 collect_sources(BORA_SOURCES_PLATFORM
         src/host/*
         src/software/darwin/*
+        src/tools/*
 )
 enable_language(OBJCXX)
 
@@ -62,7 +65,7 @@ add_executable(BORA
 
 target_compile_definitions(BORA PRIVATE
         TAZABASEDIR="${CMAKE_SOURCE_DIR}/contribs/TAZA/code"
-        NOMINMAX _WINSOCKAPI_ WRAPPER SK_DIRECT3D
+        WRAPPER
 )
 
 add_compile_options(
@@ -96,8 +99,8 @@ endif()
 set_target_properties(BORA_COMPAT PROPERTIES
         OUTPUT_NAME "LATEST"
         ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_SYSTEM_NAME}/compatibility"
-        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_SYSTEM_NAME}/compatibility"
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_SYSTEM_NAME}/compatibility"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/artifacts"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/artifacts"
 )
 set_target_properties(BORA PROPERTIES
         OUTPUT_NAME "bora"
