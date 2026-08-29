@@ -74,9 +74,6 @@ bool IsRunningAsDLL() {
 }
 
 
-
-
-
 const int app_instance_main(wasmtime_context_t* context, const WasmRuntimeModule* module_inst)
 {
     WasmTools::setLastContext(context);
