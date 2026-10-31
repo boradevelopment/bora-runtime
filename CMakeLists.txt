@@ -7,10 +7,11 @@ macro(bora_check_module TARGET_NAME MODULE_PKG DEF_NAME FRIENDLY_NAME)
         target_compile_definitions(${TARGET_NAME} PRIVATE "${DEF_NAME}=1")
         target_include_directories(${TARGET_NAME} PRIVATE ${${DEF_NAME}_PKG_INCLUDE_DIRS})
         target_link_libraries(${TARGET_NAME} PRIVATE ${${DEF_NAME}_PKG_LIBRARIES})
-        message(STATUS "BORA: ${FRIENDLY_NAME} found")
+        message(STATUS "${FRIENDLY_NAME} was found and has been imported into BORA")
         set(${DEF_NAME}_FOUND TRUE)
     else()
         set(${DEF_NAME}_FOUND FALSE)
+        message(WARNING "${FRIENDLY_NAME} was not found, it will not be available in compilation.")
     endif()
 endmacro()
 
@@ -19,19 +20,17 @@ set(BORA_WRAPPER_VERSION_MINOR 0)
 set(BORA_WRAPPER_VERSION_PATCH 0)
 
 option(ENABLE_ASAN "Enable Address Sanitizer (Debug builds affected only)" OFF)
-option(DEBUGGER "Is this a debugger varient that can debug BORA Applications?" OFF)
-if(DEBUGGER)
-    message(STATUS "Debugging Interpretation Enabled")
-endif()
+set(CMAKE_VERBOSE_MAKEFILE ON)
+
 if(ENABLE_ASAN)
-    message(STATUS "Address Sanitizer enabled")
-        if(win32)
-    set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} /fsanitize=address")
-    set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} /fsanitize=address")
-    elseif(UNIX)
-        set(CMAKE_CXX_FLAGS "${CMAKE_CXX_FLAGS} -fsanitize=address")
-        set(CMAKE_LINKER_FLAGS "${CMAKE_LINKER_FLAGS} - fsanitize=address")
-    endif ()
+    message("Address Sanitizer enabled")
+    if(WIN32)
+        add_compile_options(/fsanitize=address)
+        add_link_options(/fsanitize=address)
+    else()
+        add_compile_options(-fsanitize=address)
+        add_link_options(-fsanitize=address)
+    endif()
 endif()
 
 # Global Settings
@@ -83,9 +82,9 @@ include_directories(
 
 # source files
 collect_sources(BORA_SOURCES
-        src/mainDynamicLibrary.cpp
-        src/host/*
-        src/software/common/*
+        src/__library_main.cpp
+        src/runtime/guest/*
+        src/runtime/host/common/*
 )
 collect_sources(BORA_CONTRIBS
         ../global/cpp/contribs/*.cpp ../global/cpp/contribs/*.hpp ../global/cpp/contribs/*.h
@@ -96,35 +95,13 @@ collect_sources(BORA_TAZA
 collect_sources(BORA_3RDPARTY
         ../global/cpp/3rdparty/*
 )
-#collect_sources(BORA_LIBS
-#        ../global/libs/*.a ../global/libs/*.lib ../global/libs/*.dlib
-#)
 
-#file(GLOB_RECURSE BORA_SOURCES_WRAPPER src/*.cpp src/*.h src/*.hpp src/*.manifest src/*.rc src/*.cc)
-#file(GLOB_RECURSE HOST_FILES src/host/*.cpp src/host/*.h src/host/*.hpp src/host/*.cc src/software/common/nGraphics/* src/software/common/nWindow/* src/software/common/nGraphics/* src/software/win32/nGraphics/* src/software/common/nGUI/*)
 file(GLOB_RECURSE BORA_SOURCES_WRAPPER src/wrapper/*)
 file(GLOB_RECURSE BORA_SOURCES_CONTRIBWRAPPER ../global/cpp/contribs/*.cpp  ../global/cpp/contribs/*.h  ../global/cpp/contribs/*.hpp)
 file(GLOB_RECURSE GRAPH_FILES ../global/cpp/contribs/nGraphics/*)
 list(REMOVE_ITEM BORA_SOURCES_CONTRIBWRAPPER ${GRAPH_FILES})
-list(REMOVE_ITEM BORA_SOURCES ${BORA_SOURCES_WRAPPER})
 
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    set(BUILD_TYPE Debug)
-else()
-    set(BUILD_TYPE Release)
-endif()
-
-
-if(CMAKE_SYSTEM_PROCESSOR MATCHES "x86_64|AMD64|amd64")
-    set(ARCH "x86_64")
-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "aarch64|ARM64|arm64")
-    set(ARCH "arm64")
-elseif(CMAKE_SYSTEM_PROCESSOR MATCHES "i386|i686|x86")
-    set(ARCH "x86")
-else()
-    set(ARCH "${CMAKE_SYSTEM_PROCESSOR}")
-endif()
-string(TOLOWER "${CMAKE_SYSTEM_NAME}" SYSTEM_NAME_LOWER)
+include(${CMAKE_SOURCE_DIR}/../global/cmake/common.cmake)
 
 set(SKIA_SOURCE_DIR "${CMAKE_SOURCE_DIR}/../global/contribs/bskia")
 set(WASMTIME_SOURCE_DIR "${CMAKE_SOURCE_DIR}/../global/contribs/bora-wasmtime")
@@ -144,3 +121,9 @@ elseif(UNIX)
 else()
     message(FATAL_ERROR "Unsupported platform!")
 endif()
+
+set_target_properties(BORA PROPERTIES
+        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${SYSTEM_NAME_LOWER}/${ARCH}"
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${SYSTEM_NAME_LOWER}/${ARCH}"
+        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${SYSTEM_NAME_LOWER}/${ARCH}"
+)

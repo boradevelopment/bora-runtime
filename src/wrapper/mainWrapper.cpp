@@ -31,8 +31,8 @@
 int
 main(int argc, char *argv[])
 {
-
-    VersionLoader::executeLatestVersion(argc, argv);
+    // todo: --compatability argument check!!!
+    return VersionLoader::executeLatestVersion(argc, argv);
    // todo: use this in transmission code in latest
    //  char *wasm_file = argv[1];
    //  V2Archive boraApp;

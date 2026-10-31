@@ -1,13 +1,13 @@
 set(WAMR_BUILD_FAST_JIT 1)
 set(WAMR_BUILD_LAZY_JIT 1)
 collect_sources(BORA_SOURCES_PLATFORM
-        src/host/*
-        src/software/darwin/*
+        src/guest/*
+        src/host/darwin/*
         src/tools/*
 )
 enable_language(OBJCXX)
 
-file(GLOB_RECURSE BORA_DARWIN_SOURCE src/software/darwin/*)
+file(GLOB_RECURSE BORA_DARWIN_SOURCE src/host/darwin/*)
 file(GLOB_RECURSE BORA_CONTRIBS_DARWIN
         ../global/cpp/contribs/*.mm
 )
@@ -42,7 +42,7 @@ set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
 set (CMAKE_MACOSX_RPATH True)
 
 include(${WAMR_ROOT_DIR}/core/shared/utils/uncommon/shared_uncommon.cmake)
-include_directories(${WAMR_ROOT_DIR}/product-mini/platforms/common ./src/host/templates ../global/cpp ../global/contribs ./src ./src/software/common ./src/software/darwin ./contribs ./3rdparty)
+include_directories(${WAMR_ROOT_DIR}/product-mini/platforms/common ./src/guest/templates ../global/cpp ../global/contribs ./src ./src/host/common ./src/host/darwin ./contribs ./3rdparty)
 
 add_compile_definitions(
         TAZABASEDIR=\"${CMAKE_SOURCE_DIR}/contribs/TAZA/code\"

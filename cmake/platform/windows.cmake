@@ -1,9 +1,11 @@
-include_directories(./src/host/templates ../global/cpp ../global/contribs ./src ./src/software/common ./src/software/win32 ./contribs ./3rdparty)
+include_directories(./src/guest/templates ../global/cpp ../global/contribs ./src ./src/host/common ./src/host/win32 ./contribs ./3rdparty)
 
 collect_sources(BORA_SOURCES_PLATFORM
+        contribs/*
         src/tools/*
-        src/host/*
-        src/software/win32/*
+        src/runtime/guest/*
+        src/runtime/host/win32/*
+        src/supervisor/*
 )
 
 add_compile_definitions(
@@ -13,6 +15,7 @@ add_compile_definitions(
         GLEW_STATIC
         LIBWASM_STATIC
         SPIRV_SKIA_CONFLICT_HACK
+        BORA_ENABLE_SUPERVISOR
 )
 if(ENABLE_ASAN)
     if(MSVC)
@@ -45,7 +48,7 @@ add_executable(BORA
             ${BORA_SOURCES_WRAPPER}
         src/wrapper/mainWrapper.cpp
         ${CMAKE_CURRENT_BINARY_DIR}/artifacts/resource_wrapper.rc
-        src/software/win32/winmeta/DPI.manifest
+        src/host/win32/winmeta/DPI.manifest
 )
 
 target_compile_definitions(BORA PRIVATE
