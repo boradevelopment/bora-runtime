@@ -117,10 +117,7 @@ static wasmtime_module_t* CreateModuleFromWASMMemory(wasm_engine_t *engine, u8* 
 
     wasm_byte_vec_delete(&wasm_bytes);
 
-    if (error != nullptr) {
-        wasmtime_error_delete(error);
-        return nullptr;
-    }
+    WasmTools::logandDeleteWASMFail(error, "Module Init");
 
     return module;
 }
@@ -389,7 +386,7 @@ const WasmRuntimeModule* WasmModuleLoader::loadModuleByTAZA(WasmGlobal* linker, 
             return nullptr;
         }
         std::ifstream boraAppInputStream(tazaFileName, std::ios::in | std::ios::binary);
-        size_t fileSize = entryV2File->second.size;
+        size_t fileSize = entryV2File->second.regularsize;
         auto mappedMemory = MappedMemoryFactory::allocate(fileSize);
         bool result = boraApp.header.getV2FileDirect(
             mappedMemory->getData(),
@@ -399,7 +396,7 @@ const WasmRuntimeModule* WasmModuleLoader::loadModuleByTAZA(WasmGlobal* linker, 
             boraApp.key
         );
         if (!result) return nullptr;
-        vData = sVec<u8>(mappedMemory->getData(), mappedMemory->getData() + entryV2File->second.size);
+        vData = sVec<u8>(mappedMemory->getData(), mappedMemory->getData() + entryV2File->second.regularsize);
         if (vData.empty())
         {
             LOG_ERROR_VERBOSE(logInstance, 1) << "Entry point data has nothing.";
@@ -487,7 +484,7 @@ const WasmRuntimeModule* WasmModuleLoader::loadModuleByTAZA(WasmGlobal* linker, 
                                               : (EstimateMemorySizeFromDataSection(vData) + 4096);
         linker->addOnTail(memoryDataSize);
         wasmtime_error_t *error = NULL;
-        for (auto libraryName : linker->getMissingImports(module->module))
+        for (const auto& libraryName : linker->getMissingImports(module->module))
         {
            fs::path libraryPath = linker->findLibrary(libraryName);
             if (fs::exists(libraryPath))
@@ -794,7 +791,7 @@ const WasmThreadInstance* WasmModuleLoader::createThreadInstance(WasmGlobal* lin
 {
     auto logInstance = LogManager::instance().getLogger("bora.thread.module");
     auto* instance = new WasmThreadInstance(module->appId, context, store);
-    wasmtime_error_t *error = NULL;
+    wasmtime_error_t *error = nullptr;
     int64_t stack_low  = stackOffset;
     int64_t stack_high = stack_low + WasmGlobal::getCommonStackSize();
 
