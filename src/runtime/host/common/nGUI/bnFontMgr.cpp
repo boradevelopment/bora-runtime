@@ -33,13 +33,13 @@ ResourceHandle<IGUIFont> bnFontMgr::getFont(const char* family, int size, GUIFon
 }
 
 ResourceHandle<IGUIFontTextBlob> bnFontMgr::createTextBlob(const void* text, size_t byteLength, const IGUIFont* font,
-    TextEncoding encoding)
+    UXTextEncoding encoding)
 {
     return mgr.createTextBlob(text, byteLength, font, encoding);
 }
 
 ResourceHandle<IGUIFontTextBlob> bnFontMgr::createTextBlob(const char* string, const IGUIFont* font,
-    TextEncoding encoding)
+    UXTextEncoding encoding)
 {
     return mgr.createTextBlob(string, font, encoding);
 }

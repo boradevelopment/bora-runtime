@@ -32,10 +32,10 @@ inline sk_sp<SkImage> LoadImageFromMemory(const u8* data, size_t size) {
     }
 
     for (int y = 0; y < info.height(); y++) {
-        auto* row = reinterpret_cast<uint32_t*>(pixels.data() + y * info.minRowBytes());
+        auto* row = reinterpret_cast<u32*>(pixels.data() + y * info.minRowBytes());
         for (int x = 0; x < info.width(); x++) {
-            auto* px = reinterpret_cast<uint8_t*>(&row[x]);
-            uint8_t a = px[3];
+            auto* px = reinterpret_cast<u8*>(&row[x]);
+            u8 a = px[3];
             px[0] = px[0] * a / 255; // B
             px[1] = px[1] * a / 255; // G
             px[2] = px[2] * a / 255; // R
@@ -58,7 +58,7 @@ inline std::vector<std::u16string> wrapText(const std::u16string& text, IGUIFont
         if (c == u' ' || c == u'\n' || i == text.size()) {
             // measure current line + word
             std::u16string testLine = currentLine + (currentLine.empty() ? u"" : u" ") + word;
-            float width = font->measureText(testLine.c_str(), testLine.size() * sizeof(char16_t), TextEncoding::kUTF16, &bounds);
+            float width = font->measureText(testLine.c_str(), testLine.size() * sizeof(char16_t), UXTextEncoding::kUTF16, &bounds);
 
             if (width > maxWidth && !currentLine.empty()) {
                 lines.push_back(currentLine);

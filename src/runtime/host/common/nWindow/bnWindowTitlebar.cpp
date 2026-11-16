@@ -352,12 +352,12 @@ void bnWindowTitlebar::Update()
 
     auto u16 = wstring_to_utf16(title);
   //  if (textWidth > available_width) {
-    if (titleFont->measureText(u16.c_str(), u16.size() * sizeof(char16_t), TextEncoding::kUTF16) > available_width) {
+    if (titleFont->measureText(u16.c_str(), u16.size() * sizeof(char16_t), UXTextEncoding::kUTF16) > available_width) {
         // truncate
-        float ellipsisWidth = titleFont->measureText(u"\u2026", sizeof(char16_t), TextEncoding::kUTF16);
+        float ellipsisWidth = titleFont->measureText(u"\u2026", sizeof(char16_t), UXTextEncoding::kUTF16);
         size_t len = u16.size();
         while (len > 0) {
-            auto w = titleFont->measureText(u16.data(), len * sizeof(char16_t), TextEncoding::kUTF16);
+            auto w = titleFont->measureText(u16.data(), len * sizeof(char16_t), UXTextEncoding::kUTF16);
             if (w + ellipsisWidth <= available_width) break;
             len--;
         }
@@ -371,7 +371,7 @@ void bnWindowTitlebar::Update()
    // }
 
     UXRect bounds{};
-    titleFont->measureText(u16.c_str(), u16.size(), TextEncoding::kUTF16, &bounds);
+    titleFont->measureText(u16.c_str(), u16.size(), UXTextEncoding::kUTF16, &bounds);
 
     // Horizontal centering
     float textWidth = bounds.GetWidth();
@@ -385,7 +385,7 @@ void bnWindowTitlebar::Update()
         u16.data(),
         u16.size() * sizeof(char16_t),
         titleFont,
-        TextEncoding::kUTF16
+        UXTextEncoding::kUTF16
     );
 
     if (available_width > 15) {

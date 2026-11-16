@@ -10,7 +10,9 @@
 #include "GLEW/include/glew.h"
 #include "GLEW/include/wglew.h"
 #else
+#ifndef __DARWIN__
 #include <GL/gl.h>
+#endif
 #endif
 
 #include "nGraphics/GraphicsAbstractions.h"

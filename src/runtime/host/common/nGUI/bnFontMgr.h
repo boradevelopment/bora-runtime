@@ -38,7 +38,7 @@ public:
         @param encoding    text encoding used in the text array
         @return            SkTextBlob constructed from one run
     */
-    ResourceHandle<IGUIFontTextBlob> createTextBlob(const void* text, size_t byteLength, const IGUIFont* font, TextEncoding encoding = TextEncoding::kUTF8);
+    ResourceHandle<IGUIFontTextBlob> createTextBlob(const void* text, size_t byteLength, const IGUIFont* font, UXTextEncoding encoding = UXTextEncoding::kUTF8);
 
     /** Creates a TextBlob with a single run. string meaning depends on SkTextEncoding;
         by default, string is encoded as UTF-8.
@@ -57,7 +57,7 @@ public:
         @param encoding text encoding used in the text array
         @return         SkTextBlob constructed from one run
     */
-    ResourceHandle<IGUIFontTextBlob> createTextBlob(const char* string, const IGUIFont* font, TextEncoding encoding = TextEncoding::kUTF8);
+    ResourceHandle<IGUIFontTextBlob> createTextBlob(const char* string, const IGUIFont* font, UXTextEncoding encoding = UXTextEncoding::kUTF8);
 
     /** Returns a textblob built from a single run of text with x-positions and a single y value.
         This is equivalent to using SkTextBlobBuilder and calling allocRunPosH().

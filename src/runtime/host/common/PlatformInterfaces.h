@@ -19,7 +19,7 @@ enum class Kernals {
 inline Platforms GetPlatform() {
 #ifdef WIN32
     return Platforms::WINDOWS;
-#elif defined(MACOS)
+#elif defined(PLATFORM_MACOS)
     return Platforms::MACOS;
 #elif defined(LINUX)
     return Platforms::LINUX;
@@ -35,7 +35,7 @@ inline Platforms GetPlatform() {
 inline Kernals GetKernel() {
 #ifdef WIN32
     return Kernals::WINDOWS;
-#elif defined(MACOS) || defined(IOS)
+#elif defined(__DARWIN__)
     return Kernals::DARWIN;
 #elif defined(LINUX) || defined(ANDROID)
     return Kernals::LINUX;

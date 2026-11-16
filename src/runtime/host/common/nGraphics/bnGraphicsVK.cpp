@@ -2,15 +2,12 @@
 #include "bnGraphicsVK.h"
 #include <cstring>
 #include <ranges>
-#include "nWindow/linuxAbstracts.h"
 #ifdef WIN32
 #include <vulkan/vulkan_win32.h>
 #elif defined(__linux__)
+#include "nWindow/linuxAbstracts.h"
 #include <vulkan/vulkan_wayland.h>
 #include <vulkan/vulkan_xlib.h>
-#elif defined(__apple__)
-#endif
-
 #if defined(Always)
   #undef Always
 #endif
@@ -18,6 +15,11 @@
 #if defined(None)
   #undef None
 #endif
+#elif defined(__DARWIN__)
+#include <vulkan/vulkan_macos.h>
+#endif
+
+
 static PFN_vkCmdBeginDebugUtilsLabelEXT fpCmdBeginDebugUtilsLabelEXT = nullptr;
 static PFN_vkCmdEndDebugUtilsLabelEXT   fpCmdEndDebugUtilsLabelEXT   = nullptr;
 static PFN_vkCmdInsertDebugUtilsLabelEXT fpCmdInsertDebugUtilsLabelEXT = nullptr;
@@ -237,6 +239,15 @@ bool bnGraphicsVK::Init()
             LOG_ERROR(logger) << "Failed to create X11 surface!";
             return false;
         }
+    }
+#elif defined(__DARWIN__)
+    VkMacOSSurfaceCreateInfoMVK surfaceInfo{};
+    surfaceInfo.sType = VK_STRUCTURE_TYPE_MACOS_SURFACE_CREATE_INFO_MVK;
+    surfaceInfo.pView = handle;
+    if (vkCreateMacOSSurfaceMVK(instance, &surfaceInfo, nullptr, &surface) != VK_SUCCESS) {
+        auto logger = LogManager::instance().getLogger("bora.graphics.vulkan");
+        LOG_ERROR(logger) << "Failed to create MacOS surface!";
+        return false;
     }
 #endif
 
@@ -758,49 +769,52 @@ void bnGraphicsVK::Resize(long changedWidth, long changedHeight)
 
 void bnGraphicsVK::ReleaseShader(IShader** shader)
 {
-    auto vkShader = dynamic_cast<ShaderVK*>(*shader);
-    if (!vkShader) return;
+    if (!shader) return;
 
-    shaderRelease.push_back(shader);
+    shaderRelease.push_back(std::unique_ptr<IShader>(*shader));
+    *shader = nullptr;
 }
 
 void bnGraphicsVK::ReleaseBuffer(IBuffer** vBuffer)
 {
-  //  auto vkBuffer = dynamic_cast<BufferVK**>(vBuffer);
     if (!vBuffer) return;
 
-    bufferRelease.push_back(vBuffer);
+    bufferRelease.push_back(std::unique_ptr<IBuffer>(*vBuffer));
+    *vBuffer = nullptr;
 }
 
 void bnGraphicsVK::ReleaseTexture(ITexture** texture)
 {
     if (!texture) return;
-
-    textureRelease.push_back(texture);
+    textureRelease.push_back(std::unique_ptr<ITexture>(*texture));
+    *texture = nullptr;
 }
 
 void bnGraphicsVK::ReleaseCommandPool(ICommandPool** pool)
 {
     if (!pool) return;
-    poolRelease.push_back(pool);
+    poolRelease.push_back(std::unique_ptr<ICommandPool>(*pool));
+    *pool = nullptr;
 }
 
 void bnGraphicsVK::ReleaseDescriptorPool(IDescriptorPool** pool)
 {
     if (!pool) return;
-    descriptorPoolRelease.push_back(pool);
+    descriptorPoolRelease.push_back(std::unique_ptr<IDescriptorPool>(*pool));
+    *pool = nullptr;
 }
 
 void bnGraphicsVK::ReleaseDescriptorSetLayout(IDescriptorSetLayout** layout)
 {
     if (!layout) return;
-    descriptorSetLayoutRelease.push_back(layout);
+    descriptorSetLayoutRelease.push_back(std::unique_ptr<IDescriptorSetLayout>(*layout));
+    *layout = nullptr;
 }
 
-void bnGraphicsVK::ReleaseOnPend(void* v)
+void bnGraphicsVK::ReleaseOnPend(void* variable)
 {
-    if (!v) return;
-    pendVoids.push_back(v);
+    if (!variable) return;
+    pendVoids.push_back(variable);
 }
 
 void bnGraphicsVK::Shutdown()
@@ -1510,12 +1524,8 @@ void bnGraphicsVK::EndSingleTimeCommands(ICommandBuffer* buffer)
     submitInfo.sType = VK_STRUCTURE_TYPE_SUBMIT_INFO;
     submitInfo.commandBufferCount = 1;
     submitInfo.pCommandBuffers = &vCmdBuffer->buffer;
-
-
-
     vkQueueSubmit(graphicsQueue, 1, &submitInfo, VK_NULL_HANDLE);
-
-    cbRelease.push_back(vCmdBuffer); 
+    cbRelease.push_back(std::unique_ptr<ICommandBuffer>(vCmdBuffer));
 
     //vkQueueWaitIdle(graphicsQueue);
 
@@ -1677,9 +1687,10 @@ ITexture* bnGraphicsVK::GetSwapchainImage()
 
 void bnGraphicsVK::ClearPendingReleases()
 {
-    for (auto* cmdBuf : cbRelease) {
-        vkFreeCommandBuffers(device, cmdBuf->pool, 1, &cmdBuf->buffer);
-        delete cmdBuf;
+    for (auto& cmdBuf : cbRelease) {
+        auto cmdbuffer = dynamic_cast<CommandBufferVK*>(cmdBuf.get());
+        if (!cmdbuffer) return;
+        vkFreeCommandBuffers(device, cmdbuffer->pool, 1, &cmdbuffer->buffer);
     }
     cbRelease.clear();
 
@@ -1697,7 +1708,6 @@ void bnGraphicsVK::ClearPendingReleases()
                 set->descriptorSet = VK_NULL_HANDLE;
             }
 
-            //ds.second->~DescriptorSetVK();
             delete set;
         }
         pipeline->descriptorSets.clear();
@@ -1711,47 +1721,44 @@ void bnGraphicsVK::ClearPendingReleases()
             pipeline->layout = VK_NULL_HANDLE;
         }
 
-        //pipeline->~PipelineVK();
+
         delete pipeline;
     }
     releasePipelines.clear();
-    for (auto bufPtr : bufferRelease) {
-        if (bufPtr && *bufPtr) {
-            auto buffer = dynamic_cast<BufferVK*>(*bufPtr);
-            delete buffer;
-            *bufPtr = nullptr;
+    for (auto& bufPtr : bufferRelease) {
+        if (bufPtr) {
+            bufPtr->Release();
         }
     }
     bufferRelease.clear();
 
-    for (auto bufPtr : shaderRelease) {
-        if (bufPtr && *bufPtr) {
-            auto shader = dynamic_cast<ShaderVK*>(*bufPtr);
+    for (auto& bufPtr : shaderRelease) {
+        if (bufPtr) {
+            bufPtr->Release();
+            auto shader = dynamic_cast<ShaderVK*>(bufPtr.get());
             delete shader;
-            *bufPtr = nullptr;
         }
     }
     shaderRelease.clear();
 
-    for (auto tex : textureRelease) {
-        if (tex && *tex) {
-            auto texture = dynamic_cast<TextureVK*>(*tex);
-            if (!texture->owner && texture->imageView) { //std::find(swapChainImages.begin(), swapChainImages.end(), texture->image) != swapChainImages.end()
+    for (auto& tex : textureRelease) {
+        if (tex) {
+            auto texture = dynamic_cast<TextureVK*>(tex.get());
+            if (!texture->owner && texture->imageView) {
                     vkDestroyImageView(device, texture->imageView, nullptr);                
             }
-            delete texture;
-            *tex = nullptr;
+            texture->Release();
+            // delete texture;
         }
     }
 
-
     textureRelease.clear();
 
-    for (auto cmdPool : poolRelease) {
-        if (cmdPool && *cmdPool) {
-            (*cmdPool)->Release();
-            delete* cmdPool;
-            *cmdPool = nullptr;
+    for (auto& cmdPool : poolRelease) {
+        if (cmdPool) {
+            cmdPool->Release();
+            // delete* cmdPool;
+            // *cmdPool = nullptr;
         }
     }
 
@@ -1775,52 +1782,52 @@ void bnGraphicsVK::ClearPendingReleases()
 
     releaseCommandBuffers.clear();
 
-    for (auto pool : descriptorPoolRelease) {
+    for (auto& pool : descriptorPoolRelease) {
 
-        if (pool && *pool) {
+        if (pool) {
             auto it = std::ranges::find_if(pDraws,
-                                           [=](const PendingDrawVK& p) { return dynamic_cast<PipelineVK*>(p.pipeline)->descriptorPool == reinterpret_cast<IDescriptorPool*>(pool); });
+                                           [&](const PendingDrawVK& p) { return dynamic_cast<PipelineVK*>(p.pipeline)->descriptorPool == reinterpret_cast<DescriptorPoolVK*>(pool.get()); });
 
             if (it != pDraws.end()) {
                 continue;
             }
 
-            (*pool)->Release();
-            delete* pool;
-            *pool = nullptr;
+            pool->Release();
+            // delete* pool;
+            // *pool = nullptr;
         }
     }
 
     descriptorPoolRelease.clear();
 
-    for (auto layout : descriptorSetLayoutRelease) {
-        if (layout && *layout) {
+    for (auto& layout : descriptorSetLayoutRelease) {
+        if (layout) {
             auto it = std::ranges::find_if(pDraws,
-                                           [=](const PendingDrawVK& p) { return dynamic_cast<PipelineVK*>(p.pipeline)->descriptorSetLayout == reinterpret_cast<IDescriptorSetLayout*>(layout); });
-
+                                           [&]( PendingDrawVK& p) { return dynamic_cast<PipelineVK*>(p.pipeline)->descriptorSetLayout == reinterpret_cast<DescriptorSetLayoutVK*>(layout.get()); });
             if (it != pDraws.end()) {
                 continue;
             }
-            auto vkLayout = dynamic_cast<DescriptorSetLayoutVK*>(*layout);
-            //vkLayout->~DescriptorSetLayoutVK();
-            delete vkLayout;
-            *layout = nullptr;
+            layout->Release();
+            // auto vkLayout = dynamic_cast<DescriptorSetLayoutVK*>(*layout);
+            // delete vkLayout;
+            // *layout = nullptr;
         }
     }
     descriptorSetLayoutRelease.clear();
 
-    for (auto sampler : samplerRelease) {
+    for (auto& sampler : samplerRelease) {
         if (sampler) {
-            if (sampler->sampler != VK_NULL_HANDLE)
-                vkDestroySampler(device, sampler->sampler, nullptr);
+            auto samplerVK = dynamic_cast<SamplerVK*>(sampler.get());
+            if (samplerVK->sampler != VK_NULL_HANDLE)
+                vkDestroySampler(device, samplerVK->sampler, nullptr);
 
-            delete sampler;
+            // delete sampler;
         }
     }
 
     samplerRelease.clear();
 
-    // unsafe.
+    // unsafe
     for (auto voids : pendVoids) {
         if (voids) {
             delete voids;
@@ -2354,7 +2361,7 @@ BlendStateVK::BlendStateVK(const BlendStateDesc &desc) {
     vkBlend.pAttachments = attachments.data();
 }
 
-SamplerVK::SamplerVK(VkDevice dev, const SamplerStateDesc &desc, sVec<SamplerVK *> *samplerReleasePointer): device(dev), samplerReleasePointer(samplerReleasePointer) {
+SamplerVK::SamplerVK(VkDevice dev, const SamplerStateDesc &desc, sVec<sUniquePointer<ISamplerState>> *samplerReleasePointer): device(dev), samplerReleasePointer(samplerReleasePointer) {
     VkSamplerCreateInfo samplerInfo{};
     samplerInfo.sType = VK_STRUCTURE_TYPE_SAMPLER_CREATE_INFO;
 

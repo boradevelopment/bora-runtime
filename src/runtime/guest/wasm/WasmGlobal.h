@@ -4,7 +4,6 @@
  * FileName: WasmLibraryLinker.h
  * Purpose: Manages runtime libraries instances
  */
-
 #pragma once
 #include <wasmtime.hh>
 
@@ -16,8 +15,8 @@
 #include <unordered_map>
 #include <stdexcept>
 
-#include "WasmRunner.h"
-#include "WasmSupervisorManager.h"
+#include "WasmModuleLoader.h"
+#include "clientSupervisor/ClientSupervisorManager.h"
 #include "logging/Logger.h"
 #include "logging/LogManager.h"
 #include "logging/LogStream.h"
@@ -119,7 +118,7 @@ sUnorderedMap<std::string, int64_t> module_table_bases_;
 u64 current_memory_offset_ = m_currentMemoryTail;
 u64 current_table_offset_ = 1;
 std::mutex linker_mutex_;
-sUniquePointer<WasmSupervisorManager> supervisor_ = nullptr;
+sUniquePointer<ClientSupervisorManager> supervisor_ = nullptr;
 
 static WasmGlobal* mgr;
 
@@ -155,7 +154,7 @@ public:
     bwasmtime_gdb_server_t* getDebugServer() const {return debugServer_;}
     bool getDebugging() const {return isDebugging;}
 
-    WasmSupervisorManager* getSupervisor() const {return supervisor_.get(); }
+    ClientSupervisorManager* getSupervisor() const {return supervisor_.get(); }
     IMappedMemory* getMainMemoryMapping() const {return mapped_memory_.get(); }
 
     wasmtime_linker_t* getLinker() const { return linker_; }

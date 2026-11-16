@@ -129,9 +129,9 @@ public:
         commands.push_back(std::make_unique<FunctionCommand>(func));
     }
 
-    void PushGroup(const char* name, uint32_t color = 0xFFFFFFFF);
+    void PushGroup(const char* name, u32 color = 0xFFFFFFFF);
     void PopGroup();
-    void SetMarker(const char* name, uint32_t color = 0xFFFFFFFF);
+    void SetMarker(const char* name, u32 color = 0xFFFFFFFF);
 
     void Submit();
 public:

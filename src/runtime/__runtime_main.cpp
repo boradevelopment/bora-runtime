@@ -6,7 +6,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "wasmtime.hh"
-#include "guest/wasm/WasmRunner.h"
+#include "guest/wasm/WasmModuleLoader.h"
 #include "guest/bora/Commands.h"
 #include "guest/stl/thread.h"
 #include "logging/LogManager.h"
@@ -74,11 +74,11 @@ const int app_instance_main(wasmtime_context_t* context, const WasmRuntimeModule
             wasmtime_val_t stack_ptr_ext;
 
             wasmtime_global_get(context, &module_inst->mainThread.globalMemoryBase, &mem_base_ext);
-            int64_t mem_base = mem_base_ext.of.i64;
+            i64 mem_base = mem_base_ext.of.i64;
             std::cerr << "   [Debug State] __memory_base = " << mem_base << "\n";
 
             wasmtime_global_get(context, &module_inst->mainThread.globalStack, &stack_ptr_ext);
-            int64_t stackPtr = stack_ptr_ext.of.i64;
+            i64 stackPtr = stack_ptr_ext.of.i64;
             std::cerr << "   [Debug State] stackPtr = " << stackPtr << "\n";
 
             wasm_name_delete(&msg);
@@ -229,7 +229,7 @@ runtime_main(int argc, char *argv[]){
     wasi_config_preopen_dir(wasi_config, "./", "./", WASMTIME_WASI_DIR_PERMS_READ | WASMTIME_WASI_DIR_PERMS_WRITE, WASMTIME_WASI_FILE_PERMS_READ | WASMTIME_WASI_FILE_PERMS_WRITE);
     wasmtime_store_limiter(store, INT64_MAX, -1, -1, -1, -1);
 
-    const WasmRuntimeModule* mainModule = WasmRunner::loadModuleByTAZA(&linker, store, context, engine, wasm_file);
+    const WasmRuntimeModule* mainModule = WasmModuleLoader::loadModuleByTAZA(&linker, store, context, engine, wasm_file);
     if (mainModule == nullptr)
     {
         linker.destroy();

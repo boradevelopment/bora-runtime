@@ -1,9 +1,13 @@
 #pragma once
 #include "nWindow/bnWindowAbstracts.h"
-#import <AppKit/AppKit.h>
+
+#ifndef __OBJC__
+struct NSPoint;
+struct NSRect;
+struct NSSize;
+#else
 #import <Foundation/Foundation.h>
-#import <Cocoa/Cocoa.h>
-#import <Foundation/Foundation.h>
+#endif
 
 class darwinWindow {
 public:

@@ -413,7 +413,7 @@ void bnMessageBox::RenderFrame() {
                 format.type = config.type;
 
                 // Calculate input frames
-                uint32_t totalInputFrames = chunks.size / (chunks.channels * (chunks.bitsPerSample / 8));
+                u32 totalInputFrames = chunks.size / (chunks.channels * (chunks.bitsPerSample / 8));
 
                 // Resample & convert to float
                 std::vector<float> output;
@@ -476,7 +476,7 @@ void bnMessageBox::RenderFrame() {
 
             UXRect lineBounds;
             descriptionFont->measureText(line.data(), line.size() * sizeof(char16_t),
-                TextEncoding::kUTF16, &lineBounds);
+                UXTextEncoding::kUTF16, &lineBounds);
 
             float lineWidth = lineBounds.GetWidth();
             float x = clientRect.left + (width - lineWidth) / 2.0f - lineBounds.left;
@@ -486,7 +486,7 @@ void bnMessageBox::RenderFrame() {
                 line.data(),
                 line.size() * sizeof(char16_t),
                 descriptionFont,
-                TextEncoding::kUTF16
+                UXTextEncoding::kUTF16
             );
 
             canvas->DrawTextBlob(blob, {x, y}, textPaint);
@@ -670,8 +670,8 @@ WindowCallbackCodes bnMessageBox::windowCallback(WindowEvent* event)
             outp.clear();
             auto stream2 = rootAudioDevice->QueueStream(output.data(), output.size() * sizeof(float), format);
 
-            uint32_t bytesPerFrame = stream2->format.GetBytesPerFrame();
-            uint32_t totalFrames = stream2->totalBytes / bytesPerFrame;
+            u32 bytesPerFrame = stream2->format.GetBytesPerFrame();
+            u32 totalFrames = stream2->totalBytes / bytesPerFrame;
             ApplyReverb((float*)stream2->data, totalFrames, 2, 0, format.sampleRate);
 
             //size_t bytesPerFrame = stream2->format.GetBytesPerFrame();

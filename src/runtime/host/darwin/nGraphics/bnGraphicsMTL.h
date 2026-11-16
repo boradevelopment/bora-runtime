@@ -19,14 +19,14 @@ public:
             : buffer(buf), type(t) {}
 
     // --- BARRIERS ARE NO-OPS IN METAL ---
-    void PipelineBarrier(ITexture *image, ImageLayout oldL, ImageLayout newL,
+    void PipelineBarrier(ITexture *image, ImageLayout newL,
                          ImageAccessLayout src, ImageAccessLayout dst) override {
         // Metal handles this automatically via Hazard Tracking.
         // We just update the engine's internal tracking state.
         image->explicitLayout = newL;
     }
 
-    void PipelineBarrierBatched(ITexture *image, ImageLayout oldL, ImageLayout newL,
+    void PipelineBarrierBatched(ITexture *image, ImageLayout newL,
                                 ImageAccessLayout src, ImageAccessLayout dst) override {
         image->explicitLayout = newL;
     }
@@ -52,7 +52,7 @@ public:
 };
 
 struct BindingInfo {
-    uint32_t binding;
+    u32 binding;
     DescriptorType type;
     IShaderStage stages;
 };
@@ -199,7 +199,7 @@ private:
 
 
 struct ResourceBinding {
-    uint32_t slot;
+    u32 slot;
     void* resource; // Can be cast to Buffer or Texture
     void* sampler;
     DescriptorType type;
@@ -208,13 +208,13 @@ struct ResourceBinding {
 class DescriptorSetMTL : public IDescriptorSet {
 public:
     // We store a map or vector of what is bound to which slot
-    std::map<uint32_t, ResourceBinding> bindings;
+    std::map<u32, ResourceBinding> bindings;
 
-    void SetBuffer(uint32_t slot, IBuffer* buffer) override;
+    void SetBuffer(u32 slot, IBuffer* buffer) override;
 
-    void SetTexture(uint32_t slot, ITexture* texture) override;
+    void SetTexture(u32 slot, ITexture* texture) override;
 
-    void SetSampler(uint32_t slot, ISamplerState* sampler) override;
+    void SetSampler(u32 slot, ISamplerState* sampler) override;
 
     void Update() override {
         // In Vulkan, Update() calls vkUpdateDescriptorSets.
@@ -255,6 +255,21 @@ public:
 
     void* GetNativeHandle() override { return nullptr; }
 };
+
+class DepthStencilMTL : public IDepthStencil {
+public:
+    DepthStencilMTL(ITexture* textureMTL);
+
+    void* GetNativeHandle() override {
+        return m_depthStencilState;
+    }
+
+    void Release() override;
+private:
+    void* m_depthStencilState = nullptr;
+};
+
+
 class RenderTargetMTL : public IRenderTarget {
 public:
     struct Attachment {
@@ -287,7 +302,7 @@ public:
     // Metal handles these as simple CPU metadata containers
     DescriptorSetLayoutMTL* descriptorSetLayout = nullptr;
     DescriptorPoolMTL* descriptorPool = nullptr;
-    std::map<uint32_t, DescriptorSetMTL*> descriptorSets;
+    std::map<u32, DescriptorSetMTL*> descriptorSets;
 
     RenderTargetMTL* renderTarget;
     sVec<PipelineMTL*>* releaseVec;
@@ -307,8 +322,6 @@ public:
             : config(config), device(dev), descriptorSetLayout(setLayout),
               descriptorPool(pool), releaseVec(releaseVec), renderTarget(renderTarget)
     {
-        // In Metal, there is no "Pipeline Layout".
-        // We go straight to creating the Graphics Pipeline (PSO).
         CreateGraphicsPipeline(shaders, inputLayout, rasterizer, depthStencil, blendState);
     }
 
@@ -319,9 +332,8 @@ public:
     void* GetNativeHandle() override { return (void*)pipelineState; }
 
     // Descriptor sets in Metal are just CPU-side resource trackers
-    IDescriptorSet* CreateDescriptorSet(uint32_t slot = 0) override {
-        // We don't call a 'vkAllocate'. we just 'new' our tracker.
-        DescriptorSetMTL* ds = new DescriptorSetMTL();
+    IDescriptorSet* CreateDescriptorSet(u32 slot = 0) override {
+        auto* ds = new DescriptorSetMTL();
         descriptorSets[slot] = ds;
         return ds;
     }
@@ -467,10 +479,10 @@ public:
     IGraphicsDeviceConfig& config;
     bnGraphicsMTL(SysHandle& handle, IGraphicsDeviceConfig& config);
 
-    const char* GetAPIName() const {
+    const char* GetAPIName() const override {
         return "METAL";
     }
-    uint32_t GetAPIVersion() const {
+    u32 GetAPIVersion() const override {
         return 1;
     }
     bool IsFeatureSupported(const std::string& feature) const {
@@ -525,10 +537,11 @@ public:
     void CopyBufferToImage(ICommandBuffer* cBuffer, IBuffer* srcBuffer, ITexture* dstTexture, BufferImageCopyDesc desc) override;
     void CopyImageToImage(ICommandBuffer* cBuffer, ITexture* srcBuffer, ITexture* dstBuffer, ImageCopyDesc desc) override;
     void ClearPendingReleases() override;
-    void WaitTillImFree() override;ITexture* GetSwapchainImage() override;
-    void PushGroup(const char* name, uint32_t color = 0xFFFFFFFF) override;
+    void WaitTillImFree() override;
+    ITexture* GetSwapchainImage() override;
+    void PushGroup(const char* name, u32 color = 0xFFFFFFFF) override;
     void PopGroup() override;
-    void SetMarker(const char* name, uint32_t color = 0xFFFFFFFF) override;
+    void SetMarker(const char* name, u32 color = 0xFFFFFFFF) override;
 
 private:
     DeviceMTL device;

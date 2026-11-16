@@ -1,9 +1,23 @@
+include(FindPkgConfig)
+macro(bora_check_module TARGET_NAME MODULE_PKG DEF_NAME FRIENDLY_NAME)
+    pkg_check_modules(${DEF_NAME}_PKG QUIET ${MODULE_PKG})
+    if(${DEF_NAME}_PKG_FOUND)
+        target_compile_definitions(${TARGET_NAME} PRIVATE "${DEF_NAME}=1")
+        target_include_directories(${TARGET_NAME} PRIVATE ${${DEF_NAME}_PKG_INCLUDE_DIRS})
+        target_link_libraries(${TARGET_NAME} PRIVATE ${${DEF_NAME}_PKG_LIBRARIES})
+        message(STATUS "${FRIENDLY_NAME} was found and has been imported into BORA")
+        set(${DEF_NAME}_FOUND TRUE)
+    else()
+        set(${DEF_NAME}_FOUND FALSE)
+        message(WARNING "${FRIENDLY_NAME} was not found, it will not be available in compilation.")
+    endif()
+endmacro()
+
 set(BORA_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
 set(BORA_VERSION_MINOR ${PROJECT_VERSION_MINOR})
 set(BORA_VERSION_PATCH ${PROJECT_VERSION_PATCH})
 
 message(NOTICE "BORA ${BORA_VERSION_MAJOR}.${BORA_VERSION_MINOR}.${BORA_VERSION_PATCH} is being built on Linux ${ARCH}")
-
 
 include_directories(
         src/common

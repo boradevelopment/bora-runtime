@@ -1,7 +1,7 @@
 // Apart of the BORA Runtime Source which uses the TAOSU License
 // Check LICENSE.md for more information regarding the BORA license.
 
-#include "WasmRunner.h"
+#include "WasmModuleLoader.h"
 
 #include <cstring>
 #include <sys/mman.h> // todo: abstract!
@@ -164,7 +164,7 @@ static bool read_file(const char *path, wasm_byte_vec_t *out_vector) {
     return true;
 }
 
-void WasmRunner::clearCache()
+void WasmModuleLoader::clearCache()
 {
     std::error_code ec;
     for (const auto& entry : fs::directory_iterator(GetBoraCacheDirectory(), ec)) {
@@ -359,7 +359,7 @@ DylinkInfo ParseDylinkSection(const std::vector<uint8_t>& wasmBytes) {
     return info;
 }
 
-const WasmRuntimeModule* WasmRunner::loadModuleByTAZA(WasmGlobal* linker, wasmtime_store_t* store, wasmtime_context_t* context, wasm_engine_t* engine,
+const WasmRuntimeModule* WasmModuleLoader::loadModuleByTAZA(WasmGlobal* linker, wasmtime_store_t* store, wasmtime_context_t* context, wasm_engine_t* engine,
                                                       const char* tazaFileName, wasmtime_sharedmemory_t* shared_memory, const wasmtime_global_t* globalStack, bool isRecursed)
 {
     auto logInstance = LogManager::instance().getLogger("bora.module");
@@ -789,7 +789,7 @@ const WasmRuntimeModule* WasmRunner::loadModuleByTAZA(WasmGlobal* linker, wasmti
 
 }
 
-const WasmThreadInstance* WasmRunner::createThreadInstance(WasmGlobal* linker, wasmtime_store_t* store, wasmtime_context_t* context,
+const WasmThreadInstance* WasmModuleLoader::createThreadInstance(WasmGlobal* linker, wasmtime_store_t* store, wasmtime_context_t* context,
    const WasmRuntimeModule* module, u64 stackOffset)
 {
     auto logInstance = LogManager::instance().getLogger("bora.thread.module");

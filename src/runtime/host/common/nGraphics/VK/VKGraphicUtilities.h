@@ -62,7 +62,7 @@ inline VkPrimitiveTopology ToVkPrimitiveTopology(PrimitiveType type) {
 
 inline VkDescriptorSetLayoutCreateFlags ToVkFlags(DescriptorSetLayoutFlags flags) {
     VkDescriptorSetLayoutCreateFlags vkFlags = 0;
-    if (static_cast<uint32_t>(flags) & static_cast<uint32_t>(DescriptorSetLayoutFlags::PUSH_DESCRIPTOR)) {
+    if (static_cast<u32>(flags) & static_cast<u32>(DescriptorSetLayoutFlags::PUSH_DESCRIPTOR)) {
         vkFlags |= VK_DESCRIPTOR_SET_LAYOUT_CREATE_PUSH_DESCRIPTOR_BIT_KHR;
     }
     return vkFlags;

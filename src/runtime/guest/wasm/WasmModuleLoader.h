@@ -13,7 +13,7 @@
 
 class WasmGlobal;
 
-class WasmRunner {
+class WasmModuleLoader {
  public:
  static inline wasm_limits_t appMemoryLimits;
 

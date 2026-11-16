@@ -1,15 +1,15 @@
 // Apart of the BORA Source which uses the TAOSU License
 // Check LICENSE.md for more information regarding the BORA license.
-#include "WasmSupervisorManager.h"
+#include "ClientSupervisorManager.h"
 #include "nNetworking/DomainSocketFactory.h"
 #include "nThread/ThreadUtilities.h"
 
-WasmSupervisorManager::WasmSupervisorManager() : threadPool(4)
+ClientSupervisorManager::ClientSupervisorManager() : threadPool(4)
 {
     running_ = false;
 }
 
-WasmSupervisorManager::~WasmSupervisorManager()
+ClientSupervisorManager::~ClientSupervisorManager()
 {
     running_ = false;
     socket_->close(); // we need to shutdown it manually so threads can stop loops
@@ -17,18 +17,17 @@ WasmSupervisorManager::~WasmSupervisorManager()
     cvOutgoing_.notify_all();
 }
 
-void WasmSupervisorManager::open()
+void ClientSupervisorManager::open()
 {
     running_ = true;
     logger = LogManager::instance().getLogger("bora.supervisor");
-    // todo: linux only
-    path = std::format("/run/bora/bora_supervisor.{}.sock", BORA_VERSION);
+    path = std::format("{}/bora_supervisor.{}.sock", SUPERVISOR_SOCK_DIRECTORY, BORA_VERSION);
     socket_ = DomainSocketFactory::createClient(path);
-    supervisorThread = std::thread(&WasmSupervisorManager::supervisorLoop, this);
+    supervisorThread = std::thread(&ClientSupervisorManager::supervisorLoop, this);
     bora::thread::nameThread(supervisorThread, "svClient");
 }
 
-std::future<void>  WasmSupervisorManager::sendMessage(u32 commandType, const u8* data, size_t size)
+std::future<void>  ClientSupervisorManager::sendMessage(u32 commandType, const u8* data, size_t size)
 {
     SupervisorMessage msg;
     msg.commandType = commandType;
@@ -50,7 +49,7 @@ std::future<void>  WasmSupervisorManager::sendMessage(u32 commandType, const u8*
     return future;
 }
 
-std::future<void> WasmSupervisorManager::reply(const SupervisorMessage& message, const u8* data, size_t size)
+std::future<void> ClientSupervisorManager::reply(const SupervisorMessage& message, const u8* data, size_t size)
 {
     SupervisorMessage msg;
     msg.requestId = message.requestId; // 0 indicates a fire-and-forget message
@@ -71,7 +70,7 @@ std::future<void> WasmSupervisorManager::reply(const SupervisorMessage& message,
     return future;
 }
 
-SupervisorMessage WasmSupervisorManager::communicate(u32 commandType, const u8* data, size_t size)
+SupervisorMessage ClientSupervisorManager::communicate(u32 commandType, const u8* data, size_t size)
 {
     std::future<SupervisorMessage> futureResponse;
 
@@ -107,34 +106,34 @@ SupervisorMessage WasmSupervisorManager::communicate(u32 commandType, const u8* 
     return futureResponse.get();
 }
 
-bool WasmSupervisorManager::isRunning()
+bool ClientSupervisorManager::isRunning()
 {
     return running_;
 }
 
-void WasmSupervisorManager::hookCommand(u32 commandType, CommandCallback callback)
+void ClientSupervisorManager::hookCommand(u32 commandType, CommandCallback callback)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     commandHooks_[commandType] = std::move(callback);
 }
 
-void WasmSupervisorManager::unhookCommand(u32 commandType)
+void ClientSupervisorManager::unhookCommand(u32 commandType)
 {
     std::lock_guard<std::mutex> lock(mutex_);
     commandHooks_.erase(commandType);
 }
 
-void WasmSupervisorManager::onConnect(const ClientCallback& function)
+void ClientSupervisorManager::onConnect(const ClientCallback& function)
 {
     newClientHooks_.push_back(function);
 }
 
-void WasmSupervisorManager::onDisconnect(const ClientCallback& function)
+void ClientSupervisorManager::onDisconnect(const ClientCallback& function)
 {
     disconnectClientHooks_.push_back(function);
 }
 
-void WasmSupervisorManager::supervisorLoop()
+void ClientSupervisorManager::supervisorLoop()
 {
     bora::thread::nameThread("svLoop");
     auto time = std::chrono::steady_clock::now();
@@ -162,8 +161,8 @@ void WasmSupervisorManager::supervisorLoop()
         }
     }).detach();
 
-    supervisorThreadW = std::thread(&WasmSupervisorManager::writeLoop, this);
-    supervisorThreadR = std::thread(&WasmSupervisorManager::readLoop, this);
+    supervisorThreadW = std::thread(&ClientSupervisorManager::writeLoop, this);
+    supervisorThreadR = std::thread(&ClientSupervisorManager::readLoop, this);
     while (running_ && socket_->isConnected())
     {
        std::this_thread::yield();
@@ -190,7 +189,7 @@ void WasmSupervisorManager::supervisorLoop()
     }
 }
 
-void WasmSupervisorManager::writeLoop()
+void ClientSupervisorManager::writeLoop()
 {
     vec8 serializedBuffer;
     bora::thread::nameThread("svWrite");
@@ -233,7 +232,7 @@ void WasmSupervisorManager::writeLoop()
     }
 }
 
-void WasmSupervisorManager::readLoop()
+void ClientSupervisorManager::readLoop()
 {
     bora::thread::nameThread("svRead");
     SupervisorPacketReader packetReader(socket_.get());

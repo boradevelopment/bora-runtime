@@ -16,14 +16,14 @@
 #include <future>
 #include <cstdint>
 #include <memory>
-#include "../../../common/networking/supervisor/ISupervisorInterface.h"
+#include "common/networking/supervisor/ISupervisorInterface.h"
 #include "nThread/ThreadPool.h"
 
-class WasmSupervisorManager
+class ClientSupervisorManager
 {
 public:
-    WasmSupervisorManager();
-    ~WasmSupervisorManager();
+    ClientSupervisorManager();
+    ~ClientSupervisorManager();
 
     void open();
 
@@ -37,10 +37,10 @@ public:
     // Sends message and waits for a response
     SupervisorMessage communicate(u32 commandType, const u8* data = nullptr, size_t size = 0);
     bool isRunning();
-    using CommandCallback = std::function<void(const SupervisorMessage&, WasmSupervisorManager*)>;
+    using CommandCallback = std::function<void(const SupervisorMessage&, ClientSupervisorManager*)>;
     void hookCommand(u32 commandType, CommandCallback callback);
     void unhookCommand(u32 commandType);
-    using ClientCallback = std::function<void(WasmSupervisorManager*)>;
+    using ClientCallback = std::function<void(ClientSupervisorManager*)>;
     void onConnect(const ClientCallback& function);
     void onDisconnect(const ClientCallback& function);
 

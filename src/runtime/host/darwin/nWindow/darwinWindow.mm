@@ -1,7 +1,10 @@
+#import "darwinWindowBridge.h"
+#include "nWindow/bnWindowAbstracts.h"
 #import <AppKit/AppKit.h>
 #import <Foundation/Foundation.h>
+#import <Cocoa/Cocoa.h>
+#import <Foundation/Foundation.h>
 #include "darwinWindow.h"
-#import "darwinWindowBridge.h"
 
 template <typename T>
 SysHandle darwinWindow::createWindow(T* object, bnWindowConstructorStruct* config, bool isChild) {

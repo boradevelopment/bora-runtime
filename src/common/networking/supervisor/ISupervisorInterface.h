@@ -11,6 +11,14 @@
 #include "nNetworking/IDomainSocket.h"
 #include "ISupervisorCommands.h"
 
+#ifdef __DARWIN__
+inline const char* SUPERVISOR_SOCK_DIRECTORY = "/var/run/bora";
+#elif defined(__linux__)
+inline const char* SUPERVISOR_SOCK_DIRECTORY = "/var/run/bora";
+#else
+inline const char* SUPERVISOR_SOCK_DIRECTORY = "C:\\ProgramData\\bora";
+#endif
+
 class ISupervisorCodec
 {
 public:

@@ -112,7 +112,7 @@ public:
         //SkRect bounds;
         UXRect boundsMsg;
         auto msgWidth = (int)ceil(titleBar->titleFont->measureText(u16msg.c_str(), u16msg.size() * sizeof(char16_t),
-                                                                   TextEncoding::kUTF16, &boundsMsg));
+                                                                   UXTextEncoding::kUTF16, &boundsMsg));
 
         float maxTextWidth = 400.0f; // wrap width limit
         wrappedLines = wrapText(u16dc, titleBar->titleFont, maxTextWidth);
@@ -127,7 +127,7 @@ public:
         for (auto& line : wrappedLines)
         {
             float w = titleBar->titleFont->measureText(line.c_str(), line.size() * sizeof(char16_t),
-                                                       TextEncoding::kUTF16, &tmp);
+                                                       UXTextEncoding::kUTF16, &tmp);
             maxLineWidth = std::max(maxLineWidth, w);
         }
 

@@ -26,7 +26,7 @@ WasmGlobal::WasmGlobal(wasmtime_context_t* context, wasm_engine_t* engine, wasmt
     error = wasmtime_linker_define_wasi(linker_);
     globalSymbols->registerSymbol(linker_);
     logger_ = LogManager::instance().getLogger("bora.module.libraries");
-    supervisor_ = std::make_unique<WasmSupervisorManager>();
+    supervisor_ = std::make_unique<ClientSupervisorManager>();
     SupervisorHookRegister::registerClient();
     supervisor_->open();
     while (!supervisor_->isConnected())
@@ -178,7 +178,7 @@ sVec<sString> WasmGlobal::getMissingImports(const wasmtime_module_t* module) con
 
 const WasmThreadInstance* WasmGlobal::registerRuntimeLibraryForThread(wasmtime_store_t* store, wasmtime_context_t* context, const WasmRuntimeModule* dependencyModule, u64 stackOffset)
 {
-    const WasmThreadInstance* instanceDependency = WasmRunner::createThreadInstance(getInstance(), store, context, dependencyModule, stackOffset);
+    const WasmThreadInstance* instanceDependency = WasmModuleLoader::createThreadInstance(getInstance(), store, context, dependencyModule, stackOffset);
 
     // wasmtime_func_t func;
     // if (!WasmTools::getFunctionInInstance(instanceDependency, "_initialize", &func))
@@ -246,7 +246,7 @@ bool WasmGlobal::registerRuntimeLibrary(const std::string& lib_name, const std::
     }
 
     // Load modules will recursively load needed dependencies if found, so this will be called again.
-    const WasmRuntimeModule* dep_module = WasmRunner::loadModuleByTAZA(this, store_, context_, engine_, path.c_str(), sharedMemory_, globalStack_, true);
+    const WasmRuntimeModule* dep_module = WasmModuleLoader::loadModuleByTAZA(this, store_, context_, engine_, path.c_str(), sharedMemory_, globalStack_, true);
     if (dep_module == nullptr) return false;
 
     // Verify all imports needed by this dynamic library are already available

@@ -55,13 +55,12 @@ void BoraThreadSymbols::CreateEpochThread()
     epochThreadActive = true;
     epochThread = std::thread([]()
     {
+        bora::thread::nameThread("EPOCH");
         while (epochThreadActive && WasmGlobal::getInstance()->getEngine() != nullptr)
         {
             wasmtime_engine_increment_epoch(WasmGlobal::getInstance()->getEngine());
         }
     });
-
-    bora::thread::nameThread(epochThread,  "EPOCH");
 }
 
 void BoraThreadSymbols::ShutdownAllThreads()
@@ -102,7 +101,7 @@ int BoraThreadSymbols::create_thread(const WasmRuntimeModule* module, const Wasm
         auto dependencyInstance = WasmGlobal::getInstance()->registerRuntimeLibraryForThread(store, context, dependency, stackOffset);
         dependencyInstances.push_back(dependencyInstance);
     }
-    const WasmThreadInstance* thread = WasmRunner::createThreadInstance(WasmGlobal::getInstance(), store, context, module, stackOffset);
+    const WasmThreadInstance* thread = WasmModuleLoader::createThreadInstance(WasmGlobal::getInstance(), store, context, module, stackOffset);
     if (!thread)
     {
         return -1;
@@ -240,7 +239,7 @@ void BoraThreadSymbols::set_thread_name(const WasmRuntimeModule* module, const W
     auto name = WasmTools::fromWASM<const char*>(it->second->instance, it->second->module, namePtr);
     if (!name) return;
     it->second->name = name;
-    bora::thread::nameThread(it->second->thread, "Supervisor Client Thread");
+    bora::thread::nameThread(it->second->thread, name);
 }
 
 u64 BoraThreadSymbols::get_thread_name(const WasmRuntimeModule* module, const WasmThreadInstance* threadInstance,

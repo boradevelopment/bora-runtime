@@ -17,8 +17,8 @@ void SupervisorSocketManager::open()
 {
     gRunning = true;
     // todo: linux only
-    std::filesystem::create_directories("/run/bora");
-    path = std::format("/run/bora/bora_supervisor.{}.sock", BORA_VERSION);
+    std::filesystem::create_directories(SUPERVISOR_SOCK_DIRECTORY);
+    path = std::format("{}/bora_supervisor.{}.sock", SUPERVISOR_SOCK_DIRECTORY, BORA_VERSION);
     server = DomainSocketFactory::createServer(path);
     acceptThread_ = std::thread(&SupervisorSocketManager::mainSupervisorLoop, this);
     bora::thread::nameThread(acceptThread_, "svAccept");

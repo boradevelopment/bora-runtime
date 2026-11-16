@@ -6,6 +6,7 @@
 */
 #pragma once
 #include <fcntl.h>
+#include <unistd.h>
 
 #include "networking/supervisor/codecs/FileSystem.h"
 #include "networking/supervisor/codecs/Primitives.h"

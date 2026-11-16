@@ -9,7 +9,7 @@ enum SupervisorCommandType : u32 {
     ReadFile = 0x06,
     SeekFile = 0x09,
     CloseFile = 0x10,
-    CreateFile = 0x07,
+    WriteFile = 0x07,
     WhoAreYou = 0x08 // this is only for debugging and logging, this should NEVER be used for serious security checking
     // Add future command types here as you expand the protocol
 };

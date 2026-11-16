@@ -2,7 +2,7 @@
 // Check LICENSE.md for more information regarding the BORA license.
 #include "ClientCoreHook.h"
 #include "networking/supervisor/hooks/SupervisorHookRegister.h"
-#include "clientSupervisor/HookTemplate.h"
+#include "host/common/supervisor/hooks/HookTemplate.h"
 
 SUPERVISOR_REGISTER_CLIENT(registerClientCoreHooks) {
     HookTemplate::Command(WhoAreYou, ClientCoreHook::who_am_i);

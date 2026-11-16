@@ -18,8 +18,6 @@ bool bnGraphicsMTL::Init() {
     mNativeCommandQueue = [device newCommandQueue];
     // Use a captured pointer for the block to avoid scope issues
     void* localHandle = handle;
-
-    // Perform UI-sensitive tasks on the Main Thread
     dispatch_sync(dispatch_get_main_queue(), ^{
         NSWindow* window = (__bridge NSWindow*)localHandle;
         NSView* view = [window contentView];
@@ -82,7 +80,6 @@ void bnGraphicsMTL::Present() {
 void bnGraphicsMTL::EndFrame() {
     id<MTLCommandBuffer> cmdBuffer = (id<MTLCommandBuffer>)mCurrentFrameBuffer.GetNativeHandle();
 
-    // Get the drawable we fetched earlier in GetSwapchainImage()
     id<CAMetalDrawable> drawable = (id<CAMetalDrawable>)mCurrentDrawable;
 
     if (drawable && cmdBuffer) {
@@ -331,7 +328,6 @@ IDescriptorSetLayout *bnGraphicsMTL::CreateDescriptorSetLayout(DescriptorSetLayo
 }
 
 ICommandPool *bnGraphicsMTL::CreateCommandPool(CommandPoolDesc desc) {
-    // todo
     return new CommandPoolMTL(mNativeCommandQueue, desc);
 }
 
@@ -374,13 +370,11 @@ IBlendState *bnGraphicsMTL::CreateBlendState(const BlendStateDesc &desc) {
 }
 
 IDepthStencil *bnGraphicsMTL::CreateDepthStencil(ITexture *texture) {
-    return new DepthStencilMTL();
+    return new DepthStencilMTL(texture);
 }
 
 void CommandListMTL::EnsureEncoder() {
     if (!m_encoder) {
-        // Note: In a real engine, you'd get the MTLRenderPassDescriptor
-        // from your Framebuffer/Swapchain object here.
         MTLRenderPassDescriptor* pass = [MTLRenderPassDescriptor renderPassDescriptor];
         m_encoder = [(id<MTLCommandBuffer>)m_cmdBuffer renderCommandEncoderWithDescriptor:pass];
     }
@@ -562,6 +556,26 @@ void BlendStateMTL::ApplyToDescriptor(void *pipelineDesc) {
             attachment.destinationAlphaBlendFactor = MapBlendFactor(rt.destBlendAlpha);
             attachment.alphaBlendOperation = MapBlendOp(rt.blendOpAlpha);
         }
+    }
+}
+
+DepthStencilMTL::DepthStencilMTL(ITexture *textureMTL) {
+    if (textureMTL) {
+        auto rawTex = (id<MTLTexture>)textureMTL->GetNativeHandle();
+        id<MTLDevice> device = rawTex.device;
+        MTLDepthStencilDescriptor* desc = [[MTLDepthStencilDescriptor alloc] init];
+        desc.depthCompareFunction = MTLCompareFunctionLess;
+        desc.depthWriteEnabled = YES;
+        m_depthStencilState = [device newDepthStencilStateWithDescriptor:desc];
+        [desc release];
+    }
+}
+
+
+void DepthStencilMTL::Release() {
+    if (m_depthStencilState) {
+        [(id<MTLDepthStencilState>)m_depthStencilState release];
+        m_depthStencilState = nil;
     }
 }
 

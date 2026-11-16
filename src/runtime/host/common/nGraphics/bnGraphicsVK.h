@@ -36,7 +36,7 @@ public:
 
     ~BufferVK() override
     {
-        BufferVK::Release();
+        // BufferVK::Release();
     }
 
     void Release() override
@@ -70,7 +70,7 @@ public:
 
     ~ShaderVK() override
     {
-        ShaderVK::Release();
+        // ShaderVK::Release();
     }
 
     void Release() override
@@ -96,7 +96,7 @@ public:
 
     ~TextureVK() override
     {
-        TextureVK::Release();
+        // TextureVK::Release();
     }
 
     explicit TextureVK(bool ownership = true)  {
@@ -200,10 +200,10 @@ public:
     VkDevice device;
     VkSampler sampler = VK_NULL_HANDLE;
 
-    SamplerVK(VkDevice dev, const SamplerStateDesc& desc, sVec<SamplerVK*>* samplerReleasePointer);
+    SamplerVK(VkDevice dev, const SamplerStateDesc& desc, sVec<sUniquePointer<ISamplerState>>* samplerReleasePointer);
 
     void Release() override {
-        samplerReleasePointer->push_back(this);
+        samplerReleasePointer->push_back(std::unique_ptr<ISamplerState>(this));
     }
 
     void* GetNativeHandle() override {
@@ -211,7 +211,7 @@ public:
     }
 
 private:
-    sVec<SamplerVK*>* samplerReleasePointer;
+    sVec<sUniquePointer<ISamplerState>> * samplerReleasePointer;
 };
 
 struct PendingDrawVK : public IPendingDraw {
@@ -302,7 +302,7 @@ public:
 
     ~DescriptorSetLayoutVK() override
     {
-        DescriptorSetLayoutVK::Release();
+        // DescriptorSetLayoutVK::Release();
     }
 
     void Release() override
@@ -650,8 +650,6 @@ public:
     void PushGroup(const char* name, uint32_t color) override;
     void PopGroup() override;
     void SetMarker(const char* name, uint32_t color) override;
-    sVec<PipelineVK*> releasePipelines;
-    sVec<CommandListVK*> releaseCommandBuffers;
     bool dontClearYet = false;
     std::vector<VkFence> inFlightFences;
     uint32_t imageIndex{};
@@ -695,16 +693,18 @@ public:
     //VkDescriptorSetLayout textureSetLayout;
 
     // Release bla blas
+    sVec<PipelineVK*> releasePipelines;
+    sVec<CommandListVK*> releaseCommandBuffers;
     std::vector<ImageLayout> swapchainImageLayouts;
     sVec<void*> pendVoids;
-    sVec<IBuffer**> bufferRelease;
-    sVec<ITexture**> textureRelease;
-    sVec<IShader**> shaderRelease;
-    sVec<ICommandPool**> poolRelease;
-    sVec<IDescriptorPool**> descriptorPoolRelease;
-    sVec<IDescriptorSetLayout**> descriptorSetLayoutRelease;
-    sVec<CommandBufferVK*> cbRelease;
-    sVec<SamplerVK*> samplerRelease;
+    sVec<sUniquePointer<IBuffer>> bufferRelease;
+    sVec<sUniquePointer<ITexture>> textureRelease;
+    sVec<sUniquePointer<IShader>> shaderRelease;
+    sVec<sUniquePointer<ICommandPool>> poolRelease;
+    sVec<sUniquePointer<IDescriptorPool>> descriptorPoolRelease;
+    sVec<sUniquePointer<IDescriptorSetLayout>> descriptorSetLayoutRelease;
+    sVec<sUniquePointer<ICommandBuffer>> cbRelease;
+    sVec<sUniquePointer<ISamplerState>> samplerRelease;
     CommandPoolVK* copyPool = nullptr;
     VkQueue graphicsQueue{};
     sVec<PendingDrawVK> pDraws;

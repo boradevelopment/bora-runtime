@@ -1,112 +1,108 @@
-set(WAMR_BUILD_FAST_JIT 1)
-set(WAMR_BUILD_LAZY_JIT 1)
+
+macro(bora_check_module TARGET_NAME MODULE_NAME DEF_NAME FRIENDLY_NAME)
+    find_package(${MODULE_NAME} REQUIRED)
+    if(${MODULE_NAME}_FOUND)
+        target_compile_definitions(${TARGET_NAME} PRIVATE "${DEF_NAME}=1")
+        target_include_directories(${TARGET_NAME} PRIVATE ${${MODULE_NAME}_INCLUDE_DIRS})
+        target_link_libraries(${TARGET_NAME} PRIVATE ${${MODULE_NAME}_LIBRARIES})
+        message(STATUS "${FRIENDLY_NAME} was found and has been imported into BORA")
+        set(${MODULE_NAME}_FOUND TRUE)
+    else()
+        set(${MODULE_NAME}_FOUND FALSE)
+        message(WARNING "${FRIENDLY_NAME} was not found, it will not be available in compilation.")
+    endif()
+endmacro()
+
+set(BORA_VERSION_MAJOR ${PROJECT_VERSION_MAJOR})
+set(BORA_VERSION_MINOR ${PROJECT_VERSION_MINOR})
+set(BORA_VERSION_PATCH ${PROJECT_VERSION_PATCH})
+
+message(NOTICE "BORA ${BORA_VERSION_MAJOR}.${BORA_VERSION_MINOR}.${BORA_VERSION_PATCH} is being built on Darwin MacOS ${ARCH}")
+
+include_directories(
+        src/common
+        src/runtime
+        ./src/guest/templates ../global/cpp ../global/contribs ./src ./src/runtime/host/common ./src/runtime/host/darwin ./src/runtime/host/posix ./contribs ./3rdparty)
+
 collect_sources(BORA_SOURCES_PLATFORM
-        src/guest/*
-        src/host/darwin/*
+        contribs/*
         src/tools/*
+        src/runtime/guest/*
+        src/runtime/host/darwin/*
+        src/runtime/host/posix/*
+        src/supervisor/*
+        src/common/*
 )
-enable_language(OBJCXX)
-
-file(GLOB_RECURSE BORA_DARWIN_SOURCE src/host/darwin/*)
-file(GLOB_RECURSE BORA_CONTRIBS_DARWIN
-        ../global/cpp/contribs/*.mm
-)
-
-set_source_files_properties(${BORA_DARWIN_SOURCE} PROPERTIES LANGUAGE OBJCXX)
-
-set(WAMR_BUILD_PLATFORM "darwin")
-include(${WAMR_ROOT_DIR}/build-scripts/runtime_lib.cmake)
-find_package(OpenGL REQUIRED)
-# Set WAMR_BUILD_TARGET, currently values supported:
-# "X86_64", "AMD_64", "X86_32", "AARCH64[sub]", "ARM[sub]", "THUMB[sub]",
-# "MIPS", "XTENSA", "RISCV64[sub]", "RISCV32[sub]"
-if (NOT DEFINED WAMR_BUILD_TARGET)
-    if (CMAKE_SYSTEM_PROCESSOR MATCHES "^(arm64|aarch64)")
-        set (WAMR_BUILD_TARGET "AARCH64")
-    elseif (CMAKE_SYSTEM_PROCESSOR STREQUAL "riscv64")
-        set (WAMR_BUILD_TARGET "RISCV64")
-    elseif (CMAKE_SIZEOF_VOID_P EQUAL 8)
-        # Build as X86_64 by default in 64-bit platform
-        set (WAMR_BUILD_TARGET "X86_64")
-    elseif (CMAKE_SIZEOF_VOID_P EQUAL 4)
-        # Build as X86_32 by default in 32-bit platform
-        set (WAMR_BUILD_TARGET "X86_32")
-    else ()
-        message(SEND_ERROR "Unsupported build target platform!")
-    endif ()
-endif ()
-
-set (WAMR_ROOT_DIR ${CMAKE_CURRENT_SOURCE_DIR}/contribs/wasm-micro-runtime)
-set (CMAKE_SHARED_LINKER_FLAGS "-Wl,-U,_get_ext_lib_export_apis")
-set (CMAKE_EXE_LINKER_FLAGS "${CMAKE_EXE_LINKER_FLAGS}")
-set (CMAKE_MACOSX_RPATH True)
-
-include(${WAMR_ROOT_DIR}/core/shared/utils/uncommon/shared_uncommon.cmake)
-include_directories(${WAMR_ROOT_DIR}/product-mini/platforms/common ./src/guest/templates ../global/cpp ../global/contribs ./src ./src/host/common ./src/host/darwin ./contribs ./3rdparty)
 
 add_compile_definitions(
         TAZABASEDIR=\"${CMAKE_SOURCE_DIR}/contribs/TAZA/code\"
         NOMINMAX
         _WINSOCKAPI_
         GLEW_STATIC
+        LIBWASM_STATIC
         SPIRV_SKIA_CONFLICT_HACK
+        __POSIX__
+        __DARWIN__
+        BORA_ENABLE_SUPERVISOR
+        BORA_VERSION_MAJOR=${BORA_VERSION_MAJOR}
+        BORA_VERSION_MINOR=${BORA_VERSION_MINOR}
+        BORA_VERSION_PATCH=${BORA_VERSION_PATCH}
+        BORA_VERSION=\"${BORA_VERSION_MAJOR}.${BORA_VERSION_MINOR}.${BORA_VERSION_PATCH}\"
 )
-
 if(ENABLE_ASAN)
-    add_compile_options("-fsanitize=address")
+    add_compile_options("-fsanitize=address" "-fno-omit-frame-pointer")
     add_link_options("-fsanitize=address")
 endif()
 
-
 # Executable
 add_executable(BORA
-    ${BORA_SOURCES_WRAPPER}
+        src/wrapper/mainWrapper.cpp
+        src/wrapper/VersionLoader.cpp
+        ../global/cpp/contribs/tools/DynamicLibrary.cpp
+        ../global/cpp/contribs/tools/AppParam.cpp
+        ../global/cpp/contribs/tools/StringUtils.cpp
 )
 
 target_compile_definitions(BORA PRIVATE
         TAZABASEDIR="${CMAKE_SOURCE_DIR}/contribs/TAZA/code"
-        WRAPPER
+        NOMINMAX _WINSOCKAPI_ WRAPPER SK_VULKAN
 )
-
-add_compile_options(
-  -include ${CMAKE_CURRENT_SOURCE_DIR}/../global/cpp/contribs/TypeDefinitions.h
-)
-
+target_link_libraries(BORA PRIVATE "-rdynamic")
 if (CMAKE_BUILD_TYPE STREQUAL "Debug")
     file(GLOB_RECURSE BORA_LIBS ${CMAKE_SOURCE_DIR}/libs/Debug/*.a)
 else()
     file(GLOB_RECURSE BORA_LIBS ${CMAKE_SOURCE_DIR}/libs/Release/*.a)
 endif()
 
-
-add_library(BORA_COMPAT SHARED ${BORA_CONTRIBS_DARWIN} ${BORA_SOURCES_PLATFORM} ${BORA_SOURCES} ${BORA_CONTRIBS} ${BORA_TAZA} ${BORA_3RDPARTY})
-target_sources(BORA_COMPAT PRIVATE ${WAMR_RUNTIME_LIB_SOURCE})
-target_link_libraries(BORA_COMPAT PRIVATE Vulkan::Vulkan OpenGL::GL ${LLVM_AVAILABLE_LIBS} ${UV_A_LIBS} -lm -ldl -lpthread ${BORA_SKIA_LIBRARY} ${BORA_LIBS}
-        -lbrotlienc -lbrotlidec -lbrotlicommon
-        "-framework AppKit"
+collect_sources(BORA_CONTRIBS_MM
+        ../global/cpp/contribs/*.mm
 )
 
+add_library(BORA_COMPAT SHARED
+        src/runtime/__runtime_main.cpp
+        ${BORA_SOURCES_PLATFORM} ${BORA_CONTRIBS_MM} ${BORA_SOURCES} ${BORA_CONTRIBS} ${BORA_TAZA} ${BORA_3RDPARTY})
+if(NOT ENABLE_ASAN)
+    target_link_options(BORA_COMPAT PRIVATE "-Wl,-z,defs")
+endif ()
+
+target_link_libraries(BORA_COMPAT PRIVATE skia ${BORA_LIBS} wasmtime.a)
 target_precompile_headers(BORA_COMPAT PRIVATE
         ../global/cpp/contribs/TypeDefinitions.h
 )
 
-if (CMAKE_BUILD_TYPE STREQUAL "Debug")
-    add_dependencies(BORA_COMPAT skia_debug)
-else()
-    add_dependencies(BORA_COMPAT skia_release)
+bora_check_module(BORA_COMPAT OpenGL BORA_HAS_OPENGL "OpenGL")
+bora_check_module(BORA_COMPAT Vulkan BORA_HAS_VULKAN "VULKAN")
+
+if(BORA_HAS_OPENGL_PKG_FOUND)
+    target_link_libraries(BORA_COMPAT PRIVATE EGL GL)
 endif()
 
-set_target_properties(BORA_COMPAT PROPERTIES
-        OUTPUT_NAME "LATEST"
-        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_SYSTEM_NAME}/compatibility"
-        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/artifacts"
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/artifacts"
-)
-set_target_properties(BORA PROPERTIES
-        OUTPUT_NAME "bora"
-        ARCHIVE_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_SYSTEM_NAME}"
-        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_SYSTEM_NAME}"
-        RUNTIME_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${CMAKE_SYSTEM_NAME}"
-)
+add_dependencies(BORA_COMPAT wasmtime_lib)
+add_dependencies(BORA_COMPAT skia)
 
+set_target_properties(BORA_COMPAT PROPERTIES
+        PREFIX ""
+        LIBRARY_OUTPUT_DIRECTORY "${CMAKE_BINARY_DIR}/${SYSTEM_NAME_LOWER}/${ARCH}/compatibility"
+        OUTPUT_NAME "bora.latest"
+)
 add_dependencies(BORA BORA_COMPAT)

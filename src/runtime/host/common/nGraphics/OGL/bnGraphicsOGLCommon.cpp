@@ -1,6 +1,8 @@
 #include "bnGraphicsOGLCommon.h"
 #include <iostream>
+#ifndef __DARWIN__
 #include <GL/glext.h>
+#endif
 #include "nWindow/bnWindowAbstracts.h"
 #include "nWindow/windowUtilities.h"
 #ifdef __linux__
@@ -206,12 +208,14 @@ IShader* bnGraphicsOGLCommon::CreateShader(const ShaderDesc& desc)
 
     bool spirv = IsSPIRV(desc.bytecode, desc.bytecodeSize);
 
+#ifndef __DARWIN__
     if (spirv && IsGLExtensionSupported("GL_ARB_gl_spirv")) {
         glShaderBinary(1, &shader->shaderID, GL_SHADER_BINARY_FORMAT_SPIR_V_ARB,
             desc.bytecode, static_cast<GLsizei>(desc.bytecodeSize));
         glSpecializeShader(shader->shaderID, desc.entryName, 0, nullptr, nullptr);
     }
     else {
+#endif
         const char* src = reinterpret_cast<const char*>(desc.bytecode);
         GLint length = static_cast<GLint>(desc.bytecodeSize);
         glShaderSource(shader->shaderID, 1, &src, &length);
@@ -231,8 +235,9 @@ IShader* bnGraphicsOGLCommon::CreateShader(const ShaderDesc& desc)
             delete shader;
             return nullptr;
         }
+#ifndef __DARWIN__
     }
-
+#endif
    // cShaders.push_back(shader);
 
     return shader;
@@ -313,14 +318,15 @@ ISamplerState* bnGraphicsOGLCommon::CreateSamplerState(const SamplerStateDesc& d
     glSamplerParameteri(sampler->samplerID, GL_TEXTURE_MAG_FILTER, ToGLFilter(desc.magFilter));
     glSamplerParameterf(sampler->samplerID, GL_TEXTURE_LOD_BIAS, desc.mipLODBias);
 
-    // Anisotropy (if requested)
+    // Anisotropy
+#ifndef __DARWIN__
     if (desc.minFilter == TextureFilter::Anisotropic || desc.magFilter == TextureFilter::Anisotropic) {
-        GLfloat maxAniso = 0.0f;
+        float maxAniso = 0.0f;
         glGetFloatv(GL_MAX_TEXTURE_MAX_ANISOTROPY, &maxAniso);
         glSamplerParameterf(sampler->samplerID, GL_TEXTURE_MAX_ANISOTROPY,
             std::min<float>(desc.maxAnisotropy, maxAniso));
     }
-
+#endif
     // Address/wrap modes
     glSamplerParameteri(sampler->samplerID, GL_TEXTURE_WRAP_S, ToGLAddressMode(desc.addressU));
     glSamplerParameteri(sampler->samplerID, GL_TEXTURE_WRAP_T, ToGLAddressMode(desc.addressV));
@@ -553,9 +559,11 @@ void bnGraphicsOGLCommon::BindBuffer(IBuffer* buffer)
     case BufferType::Constant:
         glBindBufferBase(GL_UNIFORM_BUFFER, oglBuffer->slot, oglBuffer->Get());
         break;
+#ifndef __DARWIN__
     case BufferType::Storage:
         glBindBufferBase(GL_SHADER_STORAGE_BUFFER, oglBuffer->slot, oglBuffer->Get());
         break;
+#endif
     case BufferType::Staging:
         // Staging buffers are usually CPU read/write, might not bind
         break;
@@ -655,7 +663,7 @@ void bnGraphicsOGLCommon::BindRasterizerState(IRasterizerState* state)
     // Depth bias
     if (desc.depthBias != 0 || desc.slopeScaledDepthBias != 0.0f) {
         glEnable(GL_POLYGON_OFFSET_FILL);
-        glPolygonOffset(desc.slopeScaledDepthBias, static_cast<GLfloat>(desc.depthBias));
+        glPolygonOffset(desc.slopeScaledDepthBias, static_cast<float>(desc.depthBias));
     }
     else {
         glDisable(GL_POLYGON_OFFSET_FILL);
@@ -880,6 +888,7 @@ void bnGraphicsOGLCommon::ClearDepthStencil(IDepthStencil* target, float depth, 
 
 void bnGraphicsOGLCommon::DispatchCompute(uint x, uint y, uint z)
 {
+#ifndef __DARWIN__
     // Assumes a compute shader is already bound
     glDispatchCompute(x, y, z);
 
@@ -890,6 +899,7 @@ void bnGraphicsOGLCommon::DispatchCompute(uint x, uint y, uint z)
         GL_VERTEX_ATTRIB_ARRAY_BARRIER_BIT |
         GL_ELEMENT_ARRAY_BARRIER_BIT |
         GL_UNIFORM_BARRIER_BIT);
+#endif
 }
 
 void bnGraphicsOGLCommon::CopyToBuffer(IBuffer* buffer, void* data, size_t size)
@@ -903,7 +913,9 @@ void bnGraphicsOGLCommon::CopyToBuffer(IBuffer* buffer, void* data, size_t size)
     case BufferType::Vertex:   target = GL_ARRAY_BUFFER; break;
     case BufferType::Index:    target = GL_ELEMENT_ARRAY_BUFFER; break;
     case BufferType::Constant: target = GL_UNIFORM_BUFFER; break;
+#ifndef __DARWIN__
     case BufferType::Storage:  target = GL_SHADER_STORAGE_BUFFER; break;
+#endif
     case BufferType::Staging:  target = GL_COPY_WRITE_BUFFER; break; // optional
     }
 
@@ -1066,6 +1078,7 @@ void bnGraphicsOGLCommon::CopyImageToImage(ITexture* srcBuffer, ITexture* dstBuf
     GLsizei height = desc.extent.height;
     GLsizei depth = desc.extent.depth;
 
+#ifndef __DARWIN__
     glCopyImageSubData(
         srcTex, GL_TEXTURE_2D, srcLevel,
         srcX, srcY, srcZ,
@@ -1073,21 +1086,75 @@ void bnGraphicsOGLCommon::CopyImageToImage(ITexture* srcBuffer, ITexture* dstBuf
         dstX, dstY, dstZ,
         width, height, depth
     );
+#else
+    // We gonna use FBO's to mitigate the lack of glCopyImageSubData
+    GLuint readFBO = 0;
+    GLuint drawFBO = 0;
+    glGenFramebuffers(1, &readFBO);
+    glGenFramebuffers(1, &drawFBO);
+
+    // Bind and attach source texture level to read framebuffer
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, readFBO);
+    glFramebufferTexture2D(
+        GL_READ_FRAMEBUFFER,
+        GL_COLOR_ATTACHMENT0,
+        GL_TEXTURE_2D,
+        srcTex,
+        srcLevel
+    );
+
+    // Bind and attach destination texture level to draw framebuffer
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, drawFBO);
+    glFramebufferTexture2D(
+        GL_DRAW_FRAMEBUFFER,
+        GL_COLOR_ATTACHMENT0,
+        GL_TEXTURE_2D,
+        dstTex,
+        dstLevel
+    );
+
+    // Calculate bounding coordinates
+    GLint srcX0 = srcX;
+    GLint srcY0 = srcY;
+    GLint srcX1 = srcX + width;
+    GLint srcY1 = srcY + height;
+
+    GLint dstX0 = dstX;
+    GLint dstY0 = dstY;
+    GLint dstX1 = dstX + width;
+    GLint dstY1 = dstY + height;
+
+    // Perform the blit copy
+    glBlitFramebuffer(
+        srcX0, srcY0, srcX1, srcY1,
+        dstX0, dstY0, dstX1, dstY1,
+        GL_COLOR_BUFFER_BIT,
+        GL_NEAREST
+    );
+
+    // Cleanup temporary framebuffers
+    glBindFramebuffer(GL_READ_FRAMEBUFFER, 0);
+    glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0);
+    glDeleteFramebuffers(1, &readFBO);
+    glDeleteFramebuffers(1, &drawFBO);
+#endif
 
 }
 
 void bnGraphicsOGLCommon::PushGroup(const char *name, uint32_t color) {
-    // 0x9127 is GL_DEBUG_SOURCE_APPLICATION
-    // -1 tells OpenGL the string is null-terminated
+#ifndef __DARWIN__
     glPushDebugGroup(0x9127, 0, -1, name);
+#endif
 }
 
 void bnGraphicsOGLCommon::PopGroup() {
+#ifndef __DARWIN__
     glPopDebugGroup();
+#endif
 }
 
 void bnGraphicsOGLCommon::SetMarker(const char *name, uint32_t color) {
-    // GL_DEBUG_TYPE_MARKER (0x8268) is the correct type for single events
-    // Severity is usually GL_DEBUG_SEVERITY_NOTIFICATION (0x826B)
+#ifndef __DARWIN__
     glDebugMessageInsert(0x9127, 0x8268, 0, 0x826B, -1, name);
+#endif
 }

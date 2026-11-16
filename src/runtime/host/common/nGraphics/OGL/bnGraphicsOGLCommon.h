@@ -298,11 +298,46 @@ public:
         return static_cast<uint32_t>(major * 100 + minor * 10);
     }
 
-    bool IsFeatureSupported(const std::string& feature) const {
+    bool IsFeatureSupported(const std::string& feature) const override {
         if (feature == "SPIRV") {
+#ifndef __DARWIN__
             return IsGLExtensionSupported("GL_ARB_gl_spirv");
+#else
+            return false;
+#endif
         }
-        return false;
+        if (feature == "DEBUG") {
+#ifndef __DARWIN__
+            return IsGLExtensionSupported("GL_ARB_debug_output");
+#else
+    return false;
+#endif
+        }
+        if (feature == "ANISOTROPY") {
+#ifndef __DARWIN__
+            return IsGLExtensionSupported("GL_EXT_texture_filter_anisotropic");
+#else
+            return false;
+#endif
+        }
+
+        if (feature == "BUFFERSTORAGE") {
+#ifndef __DARWIN__
+            return IsGLExtensionSupported("GL_ARB_buffer_storage");
+#else
+            return false;
+#endif
+        }
+
+        if (feature == "COMPUTE") {
+#ifndef __DARWIN__
+            return IsGLExtensionSupported("GL_ARB_compute_shader");
+#else
+            return false;
+#endif
+        }
+
+        return IsGLExtensionSupported(feature.c_str());
     }
 
     // bool Init() override;

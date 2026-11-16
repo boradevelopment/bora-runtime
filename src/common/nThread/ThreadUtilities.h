@@ -31,10 +31,8 @@ inline void nameThread(const char* name) {
         SetThreadDescription(GetCurrentThread(), wname.c_str());
     }
 #elif defined(__APPLE__)
-    // macOS implementation (limited to 64 characters including null terminator)
     pthread_setname_np(name);
 #elif defined(__linux__) || defined(__ANDROID__)
-    // Linux implementation (limited to 16 characters including null terminator)
     pthread_setname_np(pthread_self(), name);
 #endif
 }
@@ -44,14 +42,13 @@ inline void nameThread(std::thread& thread, const char* name) {
     if (!name) return;
 
 #if defined(_MSC_VER)
-    // Windows supports setting other thread descriptions via native handle
     int sizeNeeded = MultiByteToWideChar(CP_UTF8, 0, name, -1, nullptr, 0);
     if (sizeNeeded > 0) {
         std::wstring wname(sizeNeeded, 0);
         MultiByteToWideChar(CP_UTF8, 0, name, -1, &wname[0], sizeNeeded);
         SetThreadDescription(thread.native_handle(), wname.c_str());
     }
-#elif defined(__APPLE__) || defined(__linux__) || defined(__ANDROID__)
+#elif defined(__linux__) || defined(__ANDROID__)
     pthread_setname_np(thread.native_handle(), name);
 #endif
 }

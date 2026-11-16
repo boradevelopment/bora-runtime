@@ -1,9 +1,10 @@
 #include "windowUtilities.h"
 
+#ifdef __linux__
 #include "nWindow/linuxWindow.h"
 #include "nWindow/gio/gioWindowUtilities.h"
 #include "nWindow/gtk/gtkWindowUtilities.h"
-
+#endif
 #if defined(_WIN32)
 #include <windows.h>
 
@@ -30,8 +31,9 @@ void windowUtilities::createSystemMessageBox(SysHandle handle, const char* title
     if (!state) // try GTK
     {
         state = gtkWindowUtilities::createMessageBox(handle, title, message, icons);
-#endif
     }
+#endif
+
 }
 
 void windowUtilities::createSystemMessageBox(SysHandle handle, const wchar_t* title, const wchar_t* message,

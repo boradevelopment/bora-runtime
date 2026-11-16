@@ -18,8 +18,7 @@
     Online:
         https://glad.dav1d.de/#profile=compatibility&language=c&specification=gl&loader=on&api=gl%3D4.6
 */
-
-
+#ifndef __DARWIN__
 #ifndef __glad_h_
 #define __glad_h_
 
@@ -5166,4 +5165,5 @@ GLAPI PFNGLPOLYGONOFFSETCLAMPPROC glad_glPolygonOffsetClamp;
 }
 #endif
 
+#endif
 #endif

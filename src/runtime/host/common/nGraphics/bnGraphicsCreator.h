@@ -24,6 +24,16 @@ inline GraphicsDeviceResult CreateGraphicsDevice(GraphicsChoice choice, SysHandl
 
     switch (choice)
     {
+#ifdef BORA_HAS_VULKAN
+        case GraphicsChoice::VULKAN:
+            result.device =  reinterpret_cast<IGraphicsDevice *>(new bnGraphicsVK(window, *config));
+            break;
+#endif
+#ifdef BORA_HAS_OPENGL
+        case GraphicsChoice::OPENGL:
+            result.device =  reinterpret_cast<IGraphicsDevice *>(new bnGraphicsOGL(window, *config));
+            break;
+#endif
 #ifdef _WIN32
     case GraphicsChoice::D3D12:
         result.device = (IGraphicsDevice*)new bnGraphicsD3D12(window, *config);
@@ -31,46 +41,12 @@ inline GraphicsDeviceResult CreateGraphicsDevice(GraphicsChoice choice, SysHandl
     case GraphicsChoice::D3D11:
         result.device = (IGraphicsDevice*)new bnGraphicsD3D11(window, *config);
         break;
-    case GraphicsChoice::VULKAN:
-        result.device = (IGraphicsDevice*)new bnGraphicsVK(window, *config);
-        break;
-    case GraphicsChoice::OPENGL:
-        result.device = (IGraphicsDevice*)new bnGraphicsOGL(window, *config);
-        break;
 #endif
 
 #ifdef __APPLE__
     case GraphicsChoice::METAL:
-        result.device = new bnGraphicsMTL(window, *(bnGraphicsConfigMetal*)config);
+        result.device = reinterpret_cast<IGraphicsDevice *>(new bnGraphicsMTL(window, *config));
         break;
-    case GraphicsChoice::VULKAN:
-        result.device = new bnGraphicsVK(window, *(bnGraphicsConfigVK*)config); // MoltenVK
-        break;
-    case GraphicsChoice::OPENGL:
-        result.device = new bnGraphicsOGL(window, *(bnGraphicsConfigGL*)config);
-        break;
-#endif
-
-#ifdef __ANDROID__
-    case GraphicsChoice::OPENGL:
-        result.device = new bnGraphicsOpenGL(window, *(bnGraphicsConfigGL*)config); // GLES
-        break;
-    case GraphicsChoice::VULKAN:
-        result.device = new bnGraphicsVK(window, *(bnGraphicsConfigVK*)config);
-        break;
-#endif
-
-#ifdef __linux__
-#ifdef BORA_HAS_VULKAN
-    case GraphicsChoice::VULKAN:
-        result.device =  (IGraphicsDevice*)new bnGraphicsVK(window, *config);
-        break;
-#endif
-#ifdef BORA_HAS_OPENGL
-    case GraphicsChoice::OPENGL:
-        result.device =  (IGraphicsDevice*)new bnGraphicsOGL(window, *config);
-        break;
-#endif
 #endif
 
     default:
